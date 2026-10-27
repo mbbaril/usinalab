@@ -118,9 +118,22 @@
     "usinalab-source-0.1.45-alpha.1.zip": "4739242514f0bd4a871adfa71f51815bce96b4ed2797ed41b63491a92ba91556",
     "vertical-gesture.js": "433f2bacbcbe2cfb37f07470ac3a25ba38896389afe5dbf8eb147621ea06822e",
     "visual-sources.js": "a6e7b729c9edc658d1344915bdaa18cb0da50c522ac79600466ebf0495b3e13f",
-    "worklet.js": "a60cde22cc6b063f2fad5a292d673297c7d6318f9e3df8ca12c1ab6a1a05e403"
+    "worklet.js": "a60cde22cc6b063f2fad5a292d673297c7d6318f9e3df8ca12c1ab6a1a05e403",
+    "usina-android-source-0.1.45.zip": "4e003daafaa0729bdd5955e6f9f7cb3e2b24b0c8ce741fc1370bbb729a6f65e7"
   },
   "sourceExclusions": [
     "personal FM patch bank resources_fm_banks.cc"
-  ]
+  ],
+  "androidSource": {
+    "version": "0.1.45",
+    "sourceArchive": "usina-android-source-0.1.45.zip",
+    "sourceArchiveSha256": "4e003daafaa0729bdd5955e6f9f7cb3e2b24b0c8ce741fc1370bbb729a6f65e7",
+    "sourceFiles": 604,
+    "cleanBuildPassed": true,
+    "apkByteIdentical": true,
+    "apkSha256": "26e6517452bb0035bd8a644ff9369ac469c50fd958fc5df369d8059f6745cef8",
+    "sourceUrl": "https://mbbaril.github.io/usinalab/usina-android-source-0.1.45.zip",
+    "olderRecipients": "four recipients, different historical APK versions not yet identified; this archive does not claim to correspond to those versions",
+    "scope": "Own app, UI, DSP, bridges, Capacitor sources and build inputs; dependency-license inventory remains subject to review."
+  }
 }
