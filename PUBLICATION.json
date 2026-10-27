@@ -2,7 +2,7 @@
   "name": "usinalab",
   "version": "0.1.45-alpha.1",
   "baseRevision": "0.1.45",
-  "status": "ready-for-deployment",
+  "status": "published",
   "sourceArchive": "usinalab-source-0.1.45-alpha.1.zip",
   "sourceArchiveSha256": "4739242514f0bd4a871adfa71f51815bce96b4ed2797ed41b63491a92ba91556",
   "cleanBuild": "passed; playback and filter analyzer WASM/glue match validated 0.1.45 byte-for-byte",
@@ -132,8 +132,10 @@
     "cleanBuildPassed": true,
     "apkByteIdentical": true,
     "apkSha256": "26e6517452bb0035bd8a644ff9369ac469c50fd958fc5df369d8059f6745cef8",
-    "sourceUrl": "https://mbbaril.github.io/usinalab/usina-android-source-0.1.45.zip",
+    "sourceUrl": "https://usina.ruido.art.br/usina-android-source-0.1.45.zip",
     "olderRecipients": "four recipients, different historical APK versions not yet identified; this archive does not claim to correspond to those versions",
     "scope": "Own app, UI, DSP, bridges, Capacitor sources and build inputs; dependency-license inventory remains subject to review."
-  }
+  },
+  "url": "https://usina.ruido.art.br/",
+  "httpsEnforced": true
 }
