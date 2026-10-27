@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+.instrument-app.library-open .library{display:grid;grid-template-columns:160px minmax(0,1fr);grid-template-rows:32px 44px minmax(0,1fr);grid-template-areas:"title tools" "search search" "categories presets";gap:8px;width:min(900px,94vw);max-width:94vw;height:min(530px,calc(100dvh - 56px));left:50%;top:44px;bottom:auto;transform:translateX(-50%);padding:10px;background:#090a08;border:1px solid #657b00;box-shadow:0 12px 40px #000c;min-height:0}
+.instrument-app .library>.section-caption{grid-area:title;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;font:10px var(--mono)}
+.instrument-app .library>.search-label{grid-area:search;margin:0;min-width:0}.instrument-app .library #search{min-width:0;height:40px;font:12px var(--mono)}
+.instrument-app .library>.categories{grid-area:categories;display:flex;flex-direction:column;flex-wrap:nowrap;overflow:auto;padding:0;margin:0;min-height:0;gap:2px}
+.instrument-app .library>.categories button{display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;min-height:44px;flex-shrink:0;border:0;border-left:2px solid transparent;padding:4px 8px;font:10px var(--mono);letter-spacing:0;background:transparent;color:#b8bdab}
+.instrument-app .library>.categories button.active{border-left-color:#c2f000;background:#343e08;color:#d8ff44}.instrument-app .library>.categories small{color:#90977c;font:9px var(--mono)}
+.instrument-app .library>.preset-list{grid-area:presets;display:block;min-height:0;border:1px solid #292e20;padding:2px;overflow:auto;overscroll-behavior:contain}
+.instrument-app .library .preset{display:grid;grid-template-columns:minmax(120px,.9fr) minmax(0,1fr) 14px;gap:8px;align-items:center;min-height:44px;width:100%;padding:6px 8px;border:0;border-left:2px solid transparent;text-align:left}
+.instrument-app .library .preset.active{padding-left:8px;border-left-color:#c2f000;background:#273006}.instrument-app .library .preset strong{font:11px var(--mono);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.instrument-app .library .preset small{font:10px var(--mono);color:#969e82;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;letter-spacing:0;text-transform:none}
+.preset-fav-mark{color:#ff7a45;font-size:13px}.instrument-app .library>.library-foot{display:none}
+.preset-browser-tools{grid-area:tools;display:flex;justify-content:flex-end;gap:6px}.preset-browser-tools button{min-width:38px;min-height:32px;padding:0;font:18px var(--mono);border:1px solid #303526;color:#bdc4aa}.preset-browser-tools .preset-favourite[aria-pressed=true]{color:#ff7a45;border-color:#ff7a45}
+@media(pointer:fine){.instrument-app .library>.categories button,.instrument-app .library .preset{min-height:28px}}
+@media(max-width:600px){.instrument-app.library-open .library{grid-template-columns:120px minmax(0,1fr);gap:5px;padding:7px}.instrument-app .library .preset{grid-template-columns:minmax(0,1fr) 14px}.instrument-app .library .preset small{grid-column:1;grid-row:2}.preset-fav-mark{grid-column:2;grid-row:1/3}.instrument-app .library>.section-caption{font-size:8px}.preset-browser-tools{gap:3px}.preset-browser-tools button{min-width:32px}}
+
+.instrument-app .library .preset:after{display:none}.instrument-app .library .preset.active strong:before{content:'✓ ';color:#c2f000}.instrument-app .library #preset-count{white-space:nowrap;font-size:9px}
+.instrument-app .library>.categories,.instrument-app .library>.preset-list{scrollbar-width:thin;scrollbar-color:#536329 #11140d}
+@media(pointer:coarse){.instrument-app.library-open .library{grid-template-rows:44px 44px minmax(0,1fr)}.preset-browser-tools button{min-height:44px;min-width:44px}}
+/* Persistent action label; the current preset name remains a separate readout. */
+.instrument-app .instrument-access #presets-toggle{display:grid;grid-template-rows:10px 14px;align-content:center;gap:0;text-align:left;padding:3px 8px;min-width:70px;max-width:140px}
+.preset-trigger-caption{display:flex;align-items:center;justify-content:space-between;gap:6px;font:8px var(--mono);color:#c9ef00;white-space:nowrap}
+.preset-trigger-arrow{display:inline-block;font-size:11px;line-height:10px}
+.preset-trigger-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:9px var(--mono);line-height:14px}
+#presets-toggle[aria-expanded=true]{border-color:var(--accent);background:#202509}
+#presets-toggle[aria-expanded=true] .preset-trigger-arrow{transform:rotate(180deg)}
+.preset-browser-tools .preset-export-open{font:10px var(--mono);padding:0 8px;color:var(--accent)}
+/* Export is a deliberate file action; keep the consequence and action visible together. */
+.preset-export-dialog{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:16px;text-align:left}
+.preset-export-dialog[open]{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:10px 18px}
+.preset-export-dialog h2{grid-column:1/-1;font:600 26px/1.1 var(--display);margin:0}
+.preset-export-identity,.preset-export-details{min-width:0}
+.preset-export-name{display:grid;gap:5px;font:12px var(--mono)}
+.preset-export-name input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;font:14px var(--mono);padding:8px;background:#10130a;color:var(--text);border:1px solid #586900;border-radius:2px}
+.preset-export-dialog p{font:11px/1.4 var(--mono);margin:8px 0}
+.preset-export-dialog p:empty{display:none}
+.preset-export-dialog .preset-export-warning{border-left:3px solid var(--accent);padding-left:10px;color:var(--text);margin-top:0}
+.preset-export-dialog .dialog-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:0;padding-top:8px}
+.preset-export-dialog button{min-height:44px}
+@media(max-width:600px){.preset-export-dialog[open]{grid-template-columns:minmax(0,1fr)}.preset-export-dialog{width:calc(100vw - 24px)}}

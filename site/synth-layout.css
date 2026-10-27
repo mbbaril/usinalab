@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Native grouping remains intact; input precision determines control spacing. */
+.operator-overview-choices{display:grid;gap:4px;padding:0 5px}
+.operator-overview-choices .field-head{display:none}
+.instrument-app .operator-overview-choices .field{gap:0}
+.instrument-app .operator-overview-choices select{height:30px;min-height:30px;padding:2px 4px;width:100%;font:10px var(--mono);background:#10110e;border:1px solid #586900}
+.operator-strip:has(.operator-overview-choices) .operator-select{grid-template-rows:18px;min-height:28px}
+.operator-strip:has(.operator-overview-choices) .operator-summary{display:none}
+.instrument-app .operator-overview-choices .mod-add,.operator-overview-choices .mod-tray{display:none}
+.instrument-app .native-operator-board .operator-native-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0}
+.instrument-app .native-operator-board .operator-native-controls>.field{max-width:none;min-width:0;width:100%}
+.instrument-app .native-operator-board .operator-native-layout .field-head{min-height:14px;line-height:14px;gap:0}
+.instrument-app .native-operator-board .operator-native-layout .field-head output{display:none}
+.instrument-app .native-operator-board .operator-native-layout .field{gap:2px}
+.instrument-app .native-operator-board .operator-native-controls .field select{width:100%;min-width:0}
+.instrument-app .native-operator-board .operator-choice-stack .field select{min-height:30px;padding:2px 3px}
+.instrument-app .native-operator-board .operator-choice-stack{gap:2px}
+@media(pointer:fine){
+  .instrument-app{--dial-size:46px}
+  .instrument-app .dial,.instrument-app .deep-controls .dial,.instrument-app .synth-overview .dial{width:var(--dial-size);height:var(--dial-size);min-width:var(--dial-size)}
+  .instrument-app .dial:after,.instrument-app .deep-controls .dial:after,.instrument-app .synth-overview .dial:after{left:calc(var(--dial-size)/2 - 1px);top:6px;height:14px;transform-origin:1px calc(var(--dial-size)/2 - 6px)}
+  .instrument-app .native-operator-board .operator-native-layout .operator-native-row[data-columns]{grid-template-columns:repeat(var(--operator-columns),minmax(68px,1fr));gap:2px}
+  .instrument-app .native-operator-board .operator-native-layout .mod-add{width:22px;min-width:22px;max-width:22px;min-height:46px;font-size:16px}
+  .instrument-app .native-operator-board .knob{min-height:82px;padding:2px 0}
+  .instrument-app .native-operator-board .dial-zone{min-height:46px}
+  .instrument-app .native-operator-board .field select{min-height:26px;height:26px;padding:2px 3px}
+  .instrument-app .native-operator-board .operator-choice-stack .field select{min-height:26px;height:26px}
+  .instrument-app .native-operator-board .velocity-coarse{min-height:24px}
+  .instrument-app .native-operator-board .operator-choice-stack{gap:0}
+  .instrument-app .native-operator-board .envelope-view-tools button{min-height:26px}
+  @container(max-width:425px){.instrument-app .native-operator-board .operator-native-layout .operator-native-row[data-columns="6"]{grid-template-columns:repeat(3,minmax(68px,1fr))}}
+  @container(max-width:275px){.instrument-app .native-operator-board .operator-native-layout .operator-native-row[data-columns="4"]{grid-template-columns:repeat(2,minmax(68px,1fr))}}
+  @container(max-width:205px){.instrument-app .native-operator-board .operator-native-layout .operator-native-row[data-columns="3"],.instrument-app .native-operator-board .operator-native-layout .operator-native-row[data-columns="6"]{grid-template-columns:repeat(2,minmax(68px,1fr))}}
+}
+@media(min-width:1180px) and (pointer:fine){
+  .instrument-app .native-operator-board{grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,6fr) minmax(0,3fr)}
+  .instrument-app .native-operator-board[data-operator-mode="8"]{grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,5fr) minmax(0,4fr)}
+}
+@media(pointer:coarse) and (min-width:701px) and (max-width:1659px){.instrument-app .native-operator-board{grid-template-columns:minmax(0,3fr) minmax(0,4fr)}}
+
+@media(pointer:coarse){
+  .instrument-app .operator-overview-choices select{height:44px;min-height:44px}
+  .instrument-app .native-operator-board .field select,.instrument-app .native-operator-board .operator-choice-stack .field select{height:44px;min-height:44px}
+}
+
+.instrument-app .native-operator-board .operator-native-controls .field:has(>.mod-add){display:grid;grid-template-columns:minmax(0,1fr) 44px;column-gap:2px}
+.instrument-app .native-operator-board .operator-native-controls .field:has(>.mod-add)>.field-head{grid-column:1/-1}
+.instrument-app .native-operator-board .operator-native-controls .field:has(>.mod-add)>select{grid-column:1;grid-row:2}
+.instrument-app .native-operator-board .operator-native-controls .field>.mod-add{grid-column:2;grid-row:2;min-height:44px;align-self:stretch}
+.instrument-app .native-operator-board .operator-native-controls .field>.mod-tray{grid-column:1/-1}
+.instrument-app .native-operator-board .operator-modal-mode{position:relative}
+.instrument-app .native-operator-board .operator-modal-mode>h3{padding-right:150px;min-height:44px;display:flex;align-items:center}
+.instrument-app .native-operator-board .operator-mode-tabs{position:absolute;right:8px;top:4px;margin:0;gap:2px}
+.instrument-app .native-operator-board .operator-mode-tabs button{min-height:44px;padding:4px 8px;font-size:9px}
+@media(pointer:fine){
+  .instrument-app .native-operator-board .operator-native-controls .field:has(>.mod-add){grid-template-columns:minmax(0,1fr) 22px}
+  .instrument-app .native-operator-board .operator-native-controls .field>.mod-add{min-width:22px;width:22px;max-width:22px;min-height:26px}
+  .instrument-app .native-operator-board .operator-modal-mode>h3{padding-right:110px;min-height:24px}
+  .instrument-app .native-operator-board .operator-mode-tabs button{min-height:24px;padding:2px 5px;font-size:8px}
+}

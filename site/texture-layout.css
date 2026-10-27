@@ -1,0 +1,31 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+.fx-editor{container-type:inline-size}
+.instrument-app .fx-texture-board{display:grid;grid-template-columns:minmax(140px,1fr) minmax(0,2fr);gap:8px;align-items:start}
+.texture-native-layout{display:grid;gap:8px;container-type:inline-size}
+.instrument-app .fx-texture-board .texture-native-layout .operator-native-row{display:grid;grid-template-columns:repeat(var(--operator-columns),minmax(104px,1fr));gap:4px;align-items:start;margin:0}
+.instrument-app .fx-texture-board .texture-native-layout .operator-native-controls{display:flex;flex-direction:column;gap:0;margin:0;align-items:stretch}
+.instrument-app .fx-texture-board .texture-native-layout .field{width:100%;max-width:none;min-width:0;gap:2px}
+.instrument-app .fx-texture-board .field-head{min-height:14px;font:10px var(--mono)}.instrument-app .fx-texture-board .field-head>output{display:none}
+.instrument-app .fx-texture-board select{min-height:44px;width:100%;font:10px var(--mono);padding:3px}
+.instrument-app .fx-texture-board .knob{min-width:0;padding:0}.instrument-app .fx-texture-board .knob>label{font:10px var(--mono)}
+@media(pointer:coarse){@container(max-width:427px){.instrument-app .fx-texture-board .texture-native-layout .operator-native-row[data-columns="4"]{grid-template-columns:repeat(2,minmax(104px,1fr))}}}
+@media(pointer:coarse){@container(max-width:215px){.instrument-app .fx-texture-board .texture-native-layout .operator-native-row[data-columns]{grid-template-columns:minmax(0,1fr)}}}
+@container(max-width:470px){.instrument-app .fx-texture-board{grid-template-columns:minmax(0,1fr)}}
+@media(pointer:fine){
+ .instrument-app .fx-texture-board .texture-native-layout .operator-native-row{grid-template-columns:repeat(var(--operator-columns),minmax(70px,1fr));gap:0}
+ .instrument-app .fx-texture-board select{min-height:22px;height:22px}
+ .instrument-app .fx-texture-board .dial{width:46px;height:46px}.instrument-app .fx-texture-board .dial:after{top:8px;left:calc(50% - 1px);height:15px;transform-origin:1px 15px}
+ .instrument-app .fx-texture-board .texture-native-layout .mod-add{min-width:22px;width:22px;min-height:46px;padding:0}
+ .instrument-app .fx-texture-board .dial-zone{min-height:46px;gap:0}
+ @container(max-width:279px){.instrument-app .fx-texture-board .texture-native-layout .operator-native-row[data-columns="4"]{grid-template-columns:repeat(2,minmax(70px,1fr))}}
+ @container(min-width:800px){.instrument-app .fx-texture-board{grid-template-columns:minmax(120px,1fr) minmax(280px,2fr) minmax(120px,1fr) minmax(140px,1fr)}}
+}
+@media(pointer:coarse){@container(min-width:1040px){.instrument-app .fx-texture-board{grid-template-columns:minmax(150px,1fr) minmax(416px,2fr) minmax(150px,1fr) minmax(208px,1fr)}}}
+
+/* The bus bar and editor have separate layout rows and never paint over one another. */
+.instrument-app #view.fx-view{display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;gap:6px}
+.instrument-app #view.fx-view>.subtabs{position:static;top:auto;z-index:auto;margin:0;padding:0 0 4px;background:#080a06}
+.instrument-app #view.fx-view>.fx-board{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#4a5c00 #0a0a0a;align-content:start}
+.fx-board:has(>.fx-drop-grid:not([hidden])) .fx-editor{min-height:214px}
+
+.instrument-app .fx-texture-board .dial-zone{gap:0}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="Toque o Usina no navegador. Um sintetizador de FM, materia e instabilidade, com o DSP C++ do instrumento para desktop.">
+  <title>usinalab — alfa</title>
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="instrument.css"><link rel="stylesheet" href="synth.css"><link rel="stylesheet" href="keybed.css"><link rel="stylesheet" href="sequence.css"><link rel="stylesheet" href="synth-layout.css"><link rel="stylesheet" href="mod-layout.css"><link rel="stylesheet" href="preset-browser.css"><link rel="stylesheet" href="texture-layout.css"><link rel="stylesheet" href="filter-layout.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="usinalab">
+</head>
+<body>
+  <header class="masthead"><a class="wordmark" href="#" aria-label="Usina inicio">ruído<span>instrumentos</span></a><span class="edition">USINA / LABORATÓRIO ABERTO</span><a class="header-link" href="#desktop">Conheça o instrumento <span>↗</span></a></header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow"><span class="status-dot"></span> SÍNTESE EXPERIMENTAL. NO SEU NAVEGADOR.</p><h1>Matéria.<br>Em movimento<span>.</span></h1><p class="intro-copy">Do primeiro seno ao metal que respira.<br>Uma fábrica de timbres nas suas mãos.</p></div>
+      <aside class="intro-aside"><span class="index-mark">01 — EXPERIMENTE</span><p>Escolha um som.<br>Toque. Transforme.<br>Veja onde ele leva.</p><span class="engine-label">C++ → WEBASSEMBLY<br>ÁUDIO GERADO EM TEMPO REAL</span></aside>
+    </section>
+    <section class="instrument" aria-label="Sintetizador Usina">
+      <div class="instrument-head"><div class="product-lockup">USINA<span>SOUND EXPLORATION SYSTEM</span></div><div class="audio-controls"><label class="quality">Qualidade <select id="quality"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4× · padrão plugin</option><option value="8">8×</option><option value="16">16×</option></select></label><button id="start" class="start">Ativar áudio</button></div></div>
+      <div class="instrument-body">
+        <aside class="library"><div class="section-caption">01 / BIBLIOTECA <span id="preset-count">—</span></div><label class="search-label"><span>⌕</span><input id="search" type="search" placeholder="Encontre uma textura" aria-label="Buscar presets"></label><div id="categories" class="categories"></div><div id="preset-list" class="preset-list" role="listbox" aria-label="Presets"></div><div class="library-foot">Sons do Usina. Sem samples de demonstração.</div></aside>
+        <div class="console">
+          <div class="patch-heading"><div><p id="patch-category" class="eyebrow">VITRINE / FM ALTERADA</p><h2 id="patch-name">Escolha sua matéria</h2><p id="patch-desc">Ative o áudio para começar a explorar.</p></div><button id="audition" class="audition" disabled aria-label="Ouvir preset">▶<span>OUVIR</span></button></div>
+          <div class="scope"><canvas id="scope" aria-label="Forma de onda do som em tempo real"></canvas><div class="scope-label"><span id="audio-status">ÁUDIO DESLIGADO</span><span id="voices">00 VOZES</span></div></div>
+          <nav class="tabs" aria-label="Vistas do instrumento"><button data-view="operators" class="active">SYNTH</button><button data-view="effects">FX</button><button data-view="sequence">SEQ</button><button data-view="cabine">CABINE</button><button data-view="perform">MACROS</button><button data-view="controller">Controlador MPE</button><button data-view="connections">Configurações</button><button data-view="credits">Créditos</button></nav>
+          <div id="address-bar" class="address-bar" aria-label="Endereçamento MIDI e modulação"></div>
+          <section id="view" class="view"></section>
+          <section id="local-keys"><div class="keyboard-head"><div class="octave-rocker" role="group" aria-label="Oitava do teclado"><button id="octave-down" aria-label="Descer oitava">−</button><output id="octave" data-base="48" aria-live="polite">C3</output><button id="octave-up" aria-label="Subir oitava">+</button></div><button id="panic" title="Soltar todas as notas">Soltar notas</button></div><div id="keyboard" class="keyboard" aria-label="Teclado musical"></div>
+          <div class="performance-wheels"><label>BEND <input id="pitch-wheel" type="range" min="-8192" max="8191" value="0" step="1"></label><label>MOD <input id="mod-wheel" type="range" min="0" max="127" value="0" step="1"></label><label>± semitons <input id="bend-range" type="number" min="1" max="48" value="2" step="1"></label></div></section>
+        </div>
+      </div>
+      <div class="instrument-foot"><span id="message" role="status" aria-live="polite">Pronto. Ative o áudio para tocar.</span><div><button id="midi">MIDI USB / OTG</button><button id="ble">MIDI BLE</button><button id="input">Entrada de áudio</button><button id="save">Salvar sessão</button><label class="file-button">Abrir sessão<input id="load" type="file" accept=".json,application/json"></label><label class="file-button">Importar som do plugin<input id="import-sound" type="file" accept=".usina,.xml,application/xml,text/xml,application/octet-stream"></label></div></div>
+    </section>
+    <section id="desktop" class="desktop"><div><p class="eyebrow">02 — CONTINUE NO SEU ESTÚDIO</p><h2>O laboratório<br>cabe na sua DAW.</h2><p>Este é o Usina em uma janela do navegador. No desktop, o instrumento se integra ao seu processo: automação, projetos da DAW e uma interface feita para construir sons em profundidade.</p><a id="vst-cta" href="https://github.com/mbbaril/usina" class="desktop-cta" target="_blank" rel="noopener">Conheça o plugin Usina <span>↗</span></a><p class="availability">Versão web experimental · VST3 / LV2 / Standalone no projeto desktop.<br><a href="#port-notes">O que esta versão já faz</a></p></div><div class="signal-art" aria-label="Seis operadores conectados em uma matriz de sintese"><span class="art-note">SEIS OPERADORES.<br>INFINITAS RELAÇÕES.</span><svg viewBox="0 0 400 270" role="img" aria-label="Matriz de seis operadores"><g fill="none" stroke="currentColor" stroke-width="1"><path d="M65 65H200V205H335M65 205H200V65H335M65 65L335 205M65 205L335 65M200 65V205"/></g><g fill="#000000" stroke="currentColor" stroke-width="2"><circle cx="65" cy="65" r="28"/><circle cx="200" cy="65" r="28"/><circle cx="335" cy="65" r="28"/><circle cx="65" cy="205" r="28"/><circle cx="200" cy="205" r="28"/><circle cx="335" cy="205" r="28"/></g><g fill="currentColor" text-anchor="middle" font-family="monospace" font-size="16"><text x="65" y="71">01</text><text x="200" y="71">02</text><text x="335" y="71">03</text><text x="65" y="211">04</text><text x="200" y="211">05</text><text x="335" y="211">06</text></g></svg><span class="art-footer">FREQUÊNCIA / FORMA / MATÉRIA / ACASO</span></div></section>
+    <details id="port-notes" class="port-notes"><summary>Sobre esta versão experimental</summary><p>O motor FM, seus modos de operador, filtros, modulação, TEXTURE, VAPOR, ROOM, DISTORT, DELAY e o sequenciador compilam do código C++ atual. A interface web é própria. O processamento final passa pelo OutputGuard do Usina.</p><p>A convolução por IR e as integrações específicas do desktop ainda não estão disponíveis. Sessões web usam um formato próprio; não são projetos plugin. A fidelidade e o desempenho são verificados por recurso, taxa de amostragem e navegador.</p></details>
+  </main><footer class="footer"><span>ruído / USINA</span><span>FEITO PARA EXPLORAR.</span><a href="THIRD_PARTY-NOTICES.txt">Licenças e créditos</a></footer>
+  <dialog id="import-dialog" aria-labelledby="import-title"><p class="eyebrow">USINA DESKTOP → WEB / ANDROID</p><h2 id="import-title">Importar som</h2><h3 id="import-name"></h3><p id="import-summary"></p><ul id="import-notices"></ul><ul id="import-blockers" class="error"></ul><div class="dialog-actions"><button id="import-cancel">Cancelar</button><button id="import-apply" class="start">Aplicar som</button></div></dialog>
+  <script type="module" src="app.js"></script>
+</body></html>

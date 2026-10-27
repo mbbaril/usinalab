@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Explicit columns prevent OUTPUT/LPG from falling into an implicit grid track. */
+.instrument-app .native-filter-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+.instrument-app .native-filter-board>[data-filter-section=main]{grid-column:1;grid-row:1/span 2}
+.instrument-app .native-filter-board>[data-filter-section=envelope]{grid-column:2;grid-row:1}
+.instrument-app .native-filter-board>.filter-output-column{grid-column:2;grid-row:2}
+.instrument-app .native-filter-board .control-section,.instrument-app .native-filter-board .operator-native-layout{min-width:0}
+@media(pointer:fine){
+ .instrument-app .native-filter-board .operator-native-row[data-columns]{grid-template-columns:repeat(var(--operator-columns),minmax(68px,92px));gap:2px;justify-content:start}
+ .instrument-app .native-filter-board .dial-zone{gap:0;min-height:46px}
+ .instrument-app .native-filter-board .operator-native-layout .mod-add{width:22px;min-width:22px;max-width:22px;min-height:46px;padding:0;font-size:16px}
+ .instrument-app .native-filter-board .knob{min-height:82px;padding:2px 0}
+ .instrument-app .native-filter-board .field select{min-height:26px;height:26px;padding:2px 3px}
+ .instrument-app .native-filter-board .envelope-view-tools button{min-height:26px}
+ .instrument-app .native-filter-board .operator-native-controls{gap:4px}
+ .instrument-app .native-filter-board .operator-native-controls>.field{flex:0 1 220px}
+ @container(max-width:487px){.instrument-app .native-filter-board .operator-native-row[data-columns="7"]{grid-template-columns:repeat(4,minmax(68px,92px))}}
+ @container(max-width:417px){.instrument-app .native-filter-board .operator-native-row[data-columns="6"]{grid-template-columns:repeat(3,minmax(68px,92px))}}
+ @container(max-width:347px){.instrument-app .native-filter-board .operator-native-row[data-columns="5"]{grid-template-columns:repeat(3,minmax(68px,92px))}}
+ @container(max-width:277px){.instrument-app .native-filter-board .operator-native-row[data-columns="7"]{grid-template-columns:repeat(3,minmax(68px,92px))}}
+ @container(max-width:207px){.instrument-app .native-filter-board .operator-native-row[data-columns="3"],.instrument-app .native-filter-board .operator-native-row[data-columns="5"],.instrument-app .native-filter-board .operator-native-row[data-columns="6"],.instrument-app .native-filter-board .operator-native-row[data-columns="7"]{grid-template-columns:repeat(2,minmax(68px,92px))}}
+}
+@media(min-width:1180px) and (pointer:fine){
+ .instrument-app .native-filter-board{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) minmax(180px,.42fr)}
+ .instrument-app .native-filter-board>[data-filter-section=main],.instrument-app .native-filter-board>[data-filter-section=envelope],.instrument-app .native-filter-board>.filter-output-column{grid-row:1}
+ .instrument-app .native-filter-board>.filter-output-column{grid-column:3}
+}
+@media(min-width:1660px) and (pointer:coarse){
+ .instrument-app .native-filter-board{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) minmax(240px,.42fr)}
+ .instrument-app .native-filter-board>[data-filter-section=main],.instrument-app .native-filter-board>[data-filter-section=envelope],.instrument-app .native-filter-board>.filter-output-column{grid-row:1}
+ .instrument-app .native-filter-board>.filter-output-column{grid-column:3}
+}
+@media(max-width:700px){
+ .instrument-app .native-filter-board{grid-template-columns:minmax(0,1fr)}
+ .instrument-app .native-filter-board>[data-filter-section],.instrument-app .native-filter-board>.filter-output-column{grid-column:1;grid-row:auto}
+}

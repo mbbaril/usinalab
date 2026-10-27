@@ -1,0 +1,76 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+.mod-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(336px,.5fr);gap:12px;align-items:start}
+.mod-board[data-mod-family="0"] .mod-workspace,.mod-board[data-mod-family="1"] .mod-workspace{grid-template-columns:minmax(336px,.8fr) minmax(0,1.2fr)}
+.mod-controls,.mod-visual{min-width:0}
+.mod-visual{position:sticky;top:0}
+.instrument-app .mod-board .control-section{margin:0}
+.instrument-app .mod-board .control-section>h3{color:var(--family-color);font-size:10px;margin:0 0 8px}
+.mod-native-layout{display:grid;gap:6px;container-type:inline-size}
+.instrument-app .mod-board .mod-native-layout .operator-native-row{display:grid;grid-template-columns:repeat(var(--operator-columns),minmax(104px,1fr));gap:2px;align-items:start}
+.instrument-app .mod-board .mod-native-layout .operator-native-controls{display:grid;grid-template-columns:repeat(var(--operator-columns),minmax(0,1fr));gap:6px;margin:0;align-items:start}
+.instrument-app .mod-board .mod-native-layout .operator-choice-stack{display:flex;flex-direction:column;gap:4px;margin:0}
+.instrument-app .mod-board .mod-native-layout .field{min-width:0;max-width:none;gap:2px}
+.instrument-app .mod-board .mod-native-layout .field-head{min-height:14px;font:9px var(--mono)}
+.instrument-app .mod-board .mod-native-layout .field-head output{display:none}
+.instrument-app .mod-board .mod-native-layout select{min-height:44px;width:100%;padding:3px;font:10px var(--mono);border-color:#586900}
+.instrument-app .mod-board .mod-native-layout .knob{padding:2px 0;gap:0}
+.instrument-app .mod-board .mod-native-layout .knob>label{min-height:16px;font:9px var(--mono)}
+.instrument-app .mod-board .mod-native-layout .knob-value{min-height:18px;margin:0;font:10px var(--mono)}
+.instrument-app .mod-board .mod-native-layout .dial-zone{gap:0}
+.instrument-app .mod-board .mod-native-layout .mod-add{width:44px;min-width:44px;max-width:44px}
+.instrument-app .mod-board .mod-native-layout .field:has(>.mod-add){display:grid;grid-template-columns:minmax(0,1fr) 44px;column-gap:2px}
+.mod-native-layout .field:has(>.mod-add)>.field-head,.mod-native-layout .field>.mod-tray{grid-column:1/-1}
+.mod-native-layout .field:has(>.mod-add)>select{grid-column:1;grid-row:2}
+.mod-native-layout .field>.mod-add{grid-column:2;grid-row:2}
+.mod-visual>.source-scope{position:static;margin:0}
+.mod-visual .source-scope svg{height:220px}
+.mod-visual .lfo-actions{display:flex;flex-wrap:wrap;margin-bottom:6px}
+.mod-visual .lfo-actions button{flex:1 1 48px;min-height:44px}
+.mod-visual .lfo-actions .tap-control{flex:1 1 110px}
+.mod-visual>.envelope-link{min-height:44px;padding:4px 8px;border:1px solid var(--line);margin-bottom:6px}
+.mod-visual .function-editor{display:flex;flex-direction:column;margin-bottom:6px}
+.mod-visual .function-surface{order:1;height:220px}
+.mod-visual .function-tools{order:2}
+.mod-macro-targets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+.mod-macro-column{min-width:0}
+.mod-families button.active{color:var(--family-color);border-color:var(--family-color)}
+@container(max-width:535px){.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="5"]{grid-template-columns:repeat(3,minmax(104px,1fr))}}
+@container(max-width:315px){.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="3"],.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="5"]{grid-template-columns:repeat(2,minmax(104px,1fr))}}
+@media(pointer:fine){
+ .instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns]{grid-template-columns:repeat(var(--operator-columns),minmax(68px,1fr))}
+ .instrument-app .mod-board .mod-native-layout .mod-add{min-width:22px;width:22px;max-width:22px;min-height:46px;font-size:16px}
+ .instrument-app .mod-board .mod-native-layout .field:has(>.mod-add){grid-template-columns:minmax(0,1fr) 22px}
+ .instrument-app .mod-board .mod-native-layout .field>.mod-add{min-height:26px}
+ .instrument-app .mod-board .mod-native-layout select{min-height:26px;height:26px}
+ .mod-visual>.envelope-link,.mod-visual .lfo-actions button{min-height:26px}
+ @container(max-width:345px){.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="5"]{grid-template-columns:repeat(3,minmax(68px,1fr))}}
+ @container(max-width:205px){.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="3"],.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="5"]{grid-template-columns:repeat(2,minmax(68px,1fr))}}
+}
+@media(max-width:700px){.mod-workspace,.mod-board[data-mod-family="0"] .mod-workspace,.mod-board[data-mod-family="1"] .mod-workspace{grid-template-columns:minmax(0,1fr)}.mod-visual{position:static}.mod-macro-targets{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+@container(max-width:420px){.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="4"]{grid-template-columns:repeat(2,minmax(104px,1fr))}}
+@media(pointer:fine){@container(min-width:276px){.instrument-app .mod-board .mod-native-layout .operator-native-row[data-columns="4"]{grid-template-columns:repeat(4,minmax(68px,1fr))}}}
+
+.mod-content{display:grid;gap:10px;min-width:0;align-items:start}
+.mod-content>.mod-board{min-width:0}.mod-content>.mod-route-list{min-width:0;margin:0;padding:8px;border:1px solid #30312b;background:#0a0a0a}
+.mod-route-list summary{font:10px var(--mono);padding:8px 0;color:#aeb19e;cursor:pointer}
+.native-route-list{display:grid;gap:3px}.native-route-row{display:flex;align-items:center;gap:4px;min-width:0;border-bottom:1px solid #23251f}
+.route-amount{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:44px;touch-action:none;cursor:ew-resize;outline-offset:-2px;font:10px var(--mono)}
+.route-amount:before{content:'';width:7px;height:7px;flex:none;background:var(--route-color);border-radius:2px}
+.route-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.route-amount-bar{position:relative;width:66px;height:10px;flex:none;background:#171917}.route-amount-bar:after{content:'';position:absolute;left:50%;top:0;bottom:0;border-left:1px solid #62665c}
+.route-amount-bar>span{position:absolute;top:0;bottom:0;background:var(--route-color)}
+.instrument-app .route-delete{min-height:44px;min-width:44px;padding:0;color:#b1b4a6;border:0;background:transparent}
+.route-empty{font:11px/1.7 var(--mono);color:#8d9185;margin:8px 0}
+.controller-performance{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.controller-performance>.field{min-width:120px;flex:0 1 160px}.controller-performance>.field:first-child{flex-basis:250px}
+.controller-slots{display:grid;gap:4px;--source-color:#ff7a45}
+.instrument-app .controller-slot,.controller-heading{display:grid;grid-template-columns:58px 72px minmax(90px,120px) 68px 66px 54px minmax(48px,1fr);align-items:center;gap:6px;min-width:0}
+.controller-heading{font:9px var(--mono);color:#8d9185}.controller-slot>strong{font:11px var(--mono);color:var(--source-color)}
+.instrument-app .controller-slot select,.instrument-app .controller-slot button{width:100%;min-width:0;min-height:44px;font:10px var(--mono);padding:4px}
+.controller-slot .controller-learn[aria-pressed=true]{border-color:var(--source-color);color:#0a0a0a;background:var(--source-color)}
+.controller-meter{height:10px;background:#151715;position:relative;overflow:hidden;min-width:0}.controller-meter-fill{display:block;height:100%;background:var(--source-color);width:0}.controller-meter.no-reading:after{content:'';position:absolute;left:0;right:0;top:50%;border-top:1px dotted #45483f}
+@media(min-width:1100px){.mod-content{grid-template-columns:minmax(0,1fr) 280px}.mod-content .mod-workspace{grid-template-columns:minmax(0,1fr) minmax(310px,.65fr)}.mod-content .mod-board[data-mod-family="0"] .mod-workspace,.mod-content .mod-board[data-mod-family="1"] .mod-workspace{grid-template-columns:minmax(310px,1fr) minmax(0,1fr)}.mod-content>.mod-route-list{position:sticky;top:0}}
+@media(pointer:fine){.route-amount{min-height:26px}.instrument-app .route-delete{min-height:26px;min-width:22px}.instrument-app .controller-slot select,.instrument-app .controller-slot button{min-height:26px;height:26px}}
+@media(max-width:650px){.controller-heading{display:none}.instrument-app .controller-slot{grid-template-columns:58px 64px minmax(90px,1fr) 64px}.controller-slot .controller-meter{grid-column:3 / -1}.controller-slot{padding:6px 0;border-bottom:1px solid #30312b}}
+
+.controller-performance .field-head output{display:none}.controller-performance .field-head{min-height:14px;font:9px var(--mono)}

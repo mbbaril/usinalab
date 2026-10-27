@@ -1,0 +1,49 @@
+usinalab — licenças e atribuições
+
+Copyright (C) 2026 Mario Baril / Ruído Instrumentos.
+O conjunto combina partes GPLv3 e AGPLv3, incluindo RuídoCore (AGPLv3).
+Os termos AGPLv3 aplicáveis à combinação são observados conforme a seção 13;
+as licenças e avisos originais dos componentes permanecem em vigor.
+Textos completos: LICENSE, LICENSE.AGPL-3.0, Apache-LICENSE.txt e licenças OFL em fonts/.
+Fontes correspondentes e instruções de build: download Código-fonte desta versão nos créditos.
+
+Felucca: Leo Kuroshita (Hügelton), GPLv3.
+sst-filters: Surge Synth Team, GPLv3. https://github.com/surge-synthesizer/sst-filters
+Music Synthesizer for Android: Copyright 2012 Google Inc., Apache-2.0.
+https://github.com/google/music-synthesizer-for-android
+A codificação dos algoritmos de seis operadores foi adaptada no CALDERA/Usina;
+a implementação e a integração diferem da fonte original. Consulte Apache-LICENSE.txt.
+RuídoCore: Mario Baril, AGPLv3; avisos próprios em source/libs/RuidoCore/THIRD_PARTY.md.
+Barlow Condensed, DM Sans e IBM Plex Mono: SIL OFL 1.1, com os avisos em fonts/.
+
+Portes DSP e utilitários MIT — aviso original:
+
+MIT
+
+Copyright 2012 Emilie Gillet.
+Copyright 2014 Emilie Gillet.
+Copyright 2015 Emilie Gillet.
+Copyright 2015 Matthias Puech.
+Copyright 2016 Emilie Gillet.
+Copyright 2017 Emilie Gillet.
+Copyright 2018 Emilie Gillet.
+Copyright 2019 Emilie Gillet.
+Copyright 2021 Emilie Gillet.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

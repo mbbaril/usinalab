@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Relative vertical gesture: no system text field, no jump when contact begins.
+export function touchValue({el,label,min,max,step=1,get,set,format=String,sensitivity=180,next=(v,d)=>v+d,finish=()=>{},begin=()=>{}}){
+  const box=el('div','touch-value'),name=el('span','',label),dial=el('button','touch-value-dial');dial.setAttribute('role','slider');dial.setAttribute('aria-label',label);dial.setAttribute('aria-valuemin',min);dial.setAttribute('aria-valuemax',max);box.append(name,dial);let drag=null;
+  const sync=()=>{dial.textContent=format(get());dial.setAttribute('aria-valuenow',get());dial.setAttribute('aria-valuetext',format(get()));box.style.setProperty('--amount',(get()-min)/(max-min));};
+  const change=v=>{set(Math.max(min,Math.min(max,min+Math.round((v-min)/step)*step)));sync();};
+  dial.onpointerdown=e=>{if(drag||e.button>0)return;e.preventDefault();begin();dial.setPointerCapture(e.pointerId);drag={id:e.pointerId,y:e.clientY,value:get()};};dial.onpointermove=e=>{if(drag?.id!==e.pointerId)return;e.preventDefault();change(drag.value+(drag.y-e.clientY)*(max-min)/sensitivity);};const cancel=()=>{const old=drag;drag=null;if(old){if(dial.hasPointerCapture(old.id))dial.releasePointerCapture(old.id);finish();}};const end=e=>{if(drag?.id===e.pointerId&&!(e.type==='lostpointercapture'&&dial.hasPointerCapture(e.pointerId))){if(e.type==='pointerup')dial.onpointermove(e);cancel();}};dial.onpointerup=dial.onpointercancel=dial.onlostpointercapture=end;
+  dial.onkeydown=e=>{const delta={ArrowUp:step,ArrowRight:step,ArrowDown:-step,ArrowLeft:-step,PageUp:step*12,PageDown:-step*12}[e.key];if(delta!==undefined){e.preventDefault();begin();change(next(get(),delta));finish();}else if(e.key==='Home'||e.key==='End'){e.preventDefault();begin();change(e.key==='Home'?min:max);finish();}};box.cancelTouchValue=cancel;box.sync=sync;sync();return box;
+}
