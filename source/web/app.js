@@ -96,10 +96,35 @@ function sendState() {
   send({ type: 'globals', resolution: state.resolution, swing: state.swing });
   send({ type: 'sequence', sequence: state.sequence, lanes: state.lanes });
 }
+// iOS / iPadOS (27/10, iPad 10ª geração: o áudio ativava e ficava mudo; o YouTube tocava): o Safari põe a Web Audio na
+// categoria "ambiente", que obedece ao modo silencioso e cede a outra aba. A página pede a categoria "reprodução"
+// (Audio Session API, Safari 17+); antes disso, um <audio> silencioso em laço, iniciado no mesmo toque, faz o mesmo.
+// O contexto interrompido pelo sistema é retomado no próximo toque e na volta da aba; a pausa pedida pela pessoa fica.
+let audioUserPaused = false, silentKeeper = null;
+function claimPlaybackSession() {
+  if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch {} return; }
+  if (!/iPad|iPhone|iPod/.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
+  if (!silentKeeper) {
+    const n = 800, wav = new DataView(new ArrayBuffer(44 + n)), text = (o, s) => [...s].forEach((c, i) => wav.setUint8(o + i, c.charCodeAt(0)));
+    text(0, 'RIFF'); wav.setUint32(4, 36 + n, true); text(8, 'WAVEfmt '); wav.setUint32(16, 16, true); wav.setUint16(20, 1, true); wav.setUint16(22, 1, true);
+    wav.setUint32(24, 8000, true); wav.setUint32(28, 8000, true); wav.setUint16(32, 1, true); wav.setUint16(34, 8, true); text(36, 'data'); wav.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) wav.setUint8(44 + i, 128);
+    silentKeeper = new Audio(URL.createObjectURL(new Blob([wav], { type: 'audio/wav' })));
+    silentKeeper.loop = true; silentKeeper.setAttribute('playsinline', '');
+  }
+  silentKeeper.play().catch(() => {});
+}
+function wakeAudio() {
+  if (!audioReady || !context || audioUserPaused || document.hidden) return;
+  if (context.state === 'suspended' || context.state === 'interrupted') { claimPlaybackSession(); context.resume().catch(() => {}); }
+}
+document.addEventListener('pointerdown', wakeAudio, true);
+document.addEventListener('visibilitychange', wakeAudio);
 async function startAudio() {
   if (!window.AudioContext || !window.AudioWorkletNode || !window.WebAssembly) throw Error('Este navegador não oferece o áudio necessário. Atualize o navegador ou use o app Usina.');
   $('start').disabled = true; $('start').textContent = 'Preparando…';
   try {
+    claimPlaybackSession();
     if (!context) { context = new AudioContext({ latencyHint: 'interactive' }); context.onstatechange = () => { sourceScopes.suspend(context.state!=='running'||document.hidden);modulationFeedback.suspend(context.state!=='running'||document.hidden);if (context.state !== 'running') releaseAll(); $('audio-status').textContent = context.state === 'running' ? `${context.sampleRate / 1000} kHz` : 'ÁUDIO PAUSADO'; }; }
     await context.resume();
     const response = await fetch('./usina.wasm'); if (!response.ok) throw Error('Motor de áudio não encontrado');
@@ -148,8 +173,8 @@ async function startAudio() {
 $('start').onclick = async () => {
   try {
     if (audioReady) {
-      if (context.state === 'running') { releaseAll(); setParam('seq_play', 0, true); await context.suspend(); $('start').textContent = 'Retomar áudio ↗'; message('Áudio pausado.'); }
-      else { await context.resume(); $('start').textContent = 'Áudio ativo ●'; message('Áudio retomado.'); }
+      if (context.state === 'running') { audioUserPaused = true; releaseAll(); setParam('seq_play', 0, true); await context.suspend(); silentKeeper?.pause(); $('start').textContent = 'Retomar áudio ↗'; message('Áudio pausado.'); }
+      else { audioUserPaused = false; claimPlaybackSession(); await context.resume(); $('start').textContent = 'Áudio ativo ●'; message('Áudio retomado.'); }
       return;
     }
     await startAudio();
