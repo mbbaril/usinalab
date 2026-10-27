@@ -119,6 +119,7 @@ export function operatorValue(mode, which, fx, models = {}) {
     case 9:return [spec('MODEL',null,models.chaos),spec('CHAOS'),spec('SHAPE',v=>pct(Math.floor((v+1)/2))),spec('SMOOTH')][which];
     case 10:return [spec('DISTRIB',null,models.stoch),spec('LVL STEP'),spec('POINTS',v=>String(3+Math.round(v/200*29))),spec('LEN STEP')][which];
     case 11:return [spec('MODEL',null,models.macro),spec('HARMONICS'),spec('TIMBRE',v=>pct(Math.floor((v+1)/2))),spec('MORPH')][which];
+    case 12:return [spec('READ',null,['ONCE','LOOP','PING-PONG','REVERSE']),spec('START'),spec('LENGTH',v=>pct(Math.floor((v+1)/2))),spec('XFADE')][which];   // (SAMPLE: engines/fm/FmSample.h)
     default:return null;
   }
 }

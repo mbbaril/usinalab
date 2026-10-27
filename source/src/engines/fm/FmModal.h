@@ -80,9 +80,11 @@ struct ModalTable {
 namespace detail {
 // libc++ in Emscripten does not implement the C++ special functions. The orders here are integers;
 // musl's jn evaluates the same J_m, retaining the zero search and its precision (no fitted modal ratios).
+// The Android NDK's libc++ neither (27/10, the native audio engine; the owner authorized this line): its libm's jn,
+// the same fdlibm-family evaluation as the WebAssembly's - the app native and the web compute the same modes.
 inline double besselJ(int m, double x)
 {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
     return ::jn(m, x);
 #else
     return std::cyl_bessel_j((double)m, x);

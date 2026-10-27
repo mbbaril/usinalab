@@ -247,6 +247,11 @@ Engine::OpCoef Engine::opCoef(const OpParams& o, int fbOffset, double da, double
         c.fe = std::clamp(C, 0.0, 200.0);                // (as CUTOFF: half semitones from the pitch, 100 = on it)
         c.fres = std::clamp(D, 0.0, 100.0);
         c.foff = (c.fe - 100.0) / 24.0;
+    } else if (o.mode == SAMPLE) {                       // (FmSample.h) A: READ, a list; B: START; C: LENGTH; D: XFADE
+        c.ftype = ((o.a % kSampleReads) + kSampleReads) % kSampleReads;
+        c.b = (float)std::clamp(B, 0.0, 100.0);
+        c.fe = std::clamp(C, 0.0, 200.0);
+        c.fres = std::clamp(D, 0.0, 100.0);
     } else if (o.mode == CHAOS || o.mode == STOCH || o.mode == MACRO) {   // (FmChaos.h, FmMacro.h) CHAOS: A MODEL,
         // B CHAOS, C SHAPE, D SMOOTH; STOCHASTIC: A DISTRIBUTION, B LEVEL STEP, C POINTS, D LENGTH STEP; MACRO: A MODEL,
         // B HARMONICS, C TIMBRE, D MORPH
@@ -802,6 +807,7 @@ double Engine::envTick(Env& e, const Adsr& o) const
 
 void Engine::noteOn(int note, int velocity, int channel)
 {
+    smp = sampleSlot.take();                              // (SAMPLE: a recording given just before the note is its)
     // a free voice, else the oldest released, else the oldest
     Voice* v = nullptr;
     for (auto& c : voices) if (!c.active) { v = &c; break; }
@@ -840,6 +846,15 @@ void Engine::noteOn(int note, int velocity, int channel)
             o.chaos.start(c.ftype, c.b, c.fe, xorshift(v->rng));
         } else if (d.mode[(size_t)k] == STOCH) {          // (STOCHASTIC: each note a new cycle of points)
             o.stoch.start(d.oc[(size_t)k].fe, xorshift(v->rng));
+        } else if (d.mode[(size_t)k] == SAMPLE) {         // (SAMPLE: each note from the region's start - its end, REVERSE)
+            const OpCoef& c = d.oc[(size_t)k];
+            if (smp != nullptr) {
+                double a = 0.0, b = 0.0;
+                sampleRegion(*smp, c.b, c.fe, a, b);
+                o.sp.start(c.ftype, a, b);
+            } else {
+                o.sp.done = true;
+            }
         } else if (d.mode[(size_t)k] == MACRO) {          // (MACRO: the note strikes the model; a fresh voice from rest)
             Macro& mc = *macros[(size_t)((v - voices.data()) * 6 + k)];
             if (fresh) mc.reset();
@@ -1073,6 +1088,15 @@ float Engine::opSample(Voice& v, int k, float in, float self, double g)
                                v.vel / 127.0f, v.gate, in) * g);
         break;
     }
+    case SAMPLE: {                                        // the recording at the operator's pitch (FmSample.h); the
+        const OpCoef& c = v.oc[(size_t)k];                // input moves where it reads: phase modulation of the sound
+        if (smp == nullptr) { y = 0.0f; break; }
+        double a = 0.0, b = 0.0;
+        sampleRegion(*smp, c.b, c.fe, a, b);
+        const double perCycle = smp->rate / kSampleRootHz;   // (a cycle at the root, in the recording's samples)
+        y = (float)(o.sp.process(*smp, c.ftype, a, b, c.fres, o.inc * perCycle, in * perCycle) * g);
+        break;
+    }
     case STOCH: {                                         // its breakpoints, a cycle of them a cycle of the phase
         const OpCoef& c = v.oc[(size_t)k];
         y = (float)(o.stoch.process(ph + in, c.ftype, c.b, c.fres) * g);
@@ -1094,6 +1118,7 @@ float Engine::opSample(Voice& v, int k, float in, float self, double g)
 
 void Engine::render(float* left, float* right, int n)
 {
+    smp = sampleSlot.take();                              // (SAMPLE: a new recording from this block on)
     // in chunks that end on the engine's control blocks (the common LFOs move once a block, as the firmware's
     // opx_block) and fit the part's buffer
     for (int done = 0; done < n;) {

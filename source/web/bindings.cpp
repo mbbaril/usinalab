@@ -19,7 +19,7 @@ extern "C" int getentropy(void* destination, size_t length) {
 #else
 #define API
 #endif
-namespace { std::unique_ptr<usina::web::Instrument> instrument; float functionPoints[64*3] {}; int chordNotes[16] {}; }
+namespace { std::unique_ptr<usina::web::Instrument> instrument; float functionPoints[64*3] {}; int chordNotes[16] {}; std::vector<float> sampleStage; }
 namespace { float sequenceWire[usina::web::sequenceWireSize] {}; }
 namespace { float chordDurations[16] {}; }
 extern "C" {
@@ -58,6 +58,16 @@ API void web_globals(int resolution,float swing) {if(instrument)instrument->glob
 API void web_flush_edits() {if(instrument)instrument->flushEdits();}
 API float* web_function_buffer() {return functionPoints;}
 API void web_function(int index,int count) {if(instrument)instrument->function(index,functionPoints,count);}
+// SAMPLE (engines/fm/FmSample.h): the recording's room (n floats; the memory may grow), then handed to the engine
+// (n 0: none). One thread here, the worklet's: handed over between two blocks
+API float* web_sample_buffer(int n) {if(n<1||n>192000*30)return nullptr;try{sampleStage.assign((size_t)n,0.0f);}catch(...){return nullptr;}return sampleStage.data();}
+API void web_sample(int n,double rate) {
+    if(!instrument)return;
+    if(n<1||n>(int)sampleStage.size()||!(rate>=8000&&rate<=192000)){instrument->engine.setSample(nullptr);instrument->engine.collectSample();return;}
+    auto s=std::make_unique<usina::fm::SampleData>();s->rate=rate;s->data.assign(sampleStage.begin(),sampleStage.begin()+n);
+    instrument->engine.setSample(std::move(s));instrument->engine.collectSample();
+    std::vector<float>().swap(sampleStage);
+}
 API float* web_input(int channel) {return instrument&&channel>=0&&channel<2?instrument->input(channel):nullptr;}
 API float* web_output(int channel) {return instrument&&channel>=0&&channel<2?instrument->output(channel):nullptr;}
 API void web_render(int count) {if(instrument)instrument->render(count);}

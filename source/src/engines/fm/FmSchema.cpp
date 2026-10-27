@@ -11,7 +11,7 @@ struct D { const char* name; int min, max, def; };
 // an operator's 27 (eng_opx.c OPX_PD). FIXED HZ from 0: a preset stores 0 for "never set" (the operator then is not
 // fixed; the firmware's SET writes >= 1). The defaults: the init patch's operator (OP1 differs: LEVEL 100)
 const D kOp[kOpValues] = {
-    { "MODE", 0, 11, 0 }, { "WAVE", 0, 32, 0 }, { "FREQ", 0, 1, 0 }, { "COARSE", 0, 38, 7 }, { "FINE", 50, 200, 100 },
+    { "MODE", 0, 12, 0 }, { "WAVE", 0, 32, 0 }, { "FREQ", 0, 1, 0 }, { "COARSE", 0, 38, 7 }, { "FINE", 50, 200, 100 },
     { "DETUNE", -50, 50, 0 }, { "TRANS", -12, 12, 0 }, { "FIXED HZ", 0, 999999, 0 }, { "LEVEL", 0, 100, 0 },
     { "ATK", 0, 127, 0 }, { "DEC", 0, 127, 0 }, { "SUS", 0, 100, 100 }, { "REL", 0, 127, 26 }, { "CURVE", 0, 10, 0 },
     { "A", 0, 100, 0 }, { "B", 0, 100, 0 }, { "C", 0, 200, 100 }, { "VEL", 0, 100, 0 }, { "EG1", -2304, 2304, 0 },

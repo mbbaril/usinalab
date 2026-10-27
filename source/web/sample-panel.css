@@ -1,0 +1,7 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* SAMPLE's recording (sample-panel.js): the buttons, its name, its waveform with the region read lit */
+.sample-box{display:flex;flex-direction:column;gap:4px;margin-top:8px;min-width:0}
+.sample-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.sample-buttons .small-button{min-height:36px;font:10px var(--mono)}
+.sample-buttons [aria-pressed=true]{background:#ff3b3b;color:#000;border-color:#ff3b3b}
+.sample-name{font:10px var(--mono);color:#8a8a86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sample-wave{width:100%;height:64px;display:block;border-radius:3px}

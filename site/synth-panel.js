@@ -6,8 +6,8 @@ import {operatorRatioText,voiceFilterState} from './synth-parameters.js';
 import {operatorSections,mountOperatorRows,mountOperatorMode} from './operator-layout.js';
 import {filterRows,mountFilterRows} from './filter-layout.js';
 import {filterResponseView} from './filter-response.js';
-const modes=['FM','RING','FILTER','FILTER FM','FOLD','EFFECT','BYPASS','MUTE','MODAL','CHAOS','STOCHASTIC','MACRO'];
-export function createSynthPanel({el,param,descriptor,descriptors,metadata,algorithms,field,section,subtabs,setParam,rerender,renderModulation,filterRate}){
+const modes=['FM','RING','FILTER','FILTER FM','FOLD','EFFECT','BYPASS','MUTE','MODAL','CHAOS','STOCHASTIC','MACRO','SAMPLE'];
+export function createSynthPanel({el,param,descriptor,descriptors,metadata,algorithms,field,section,subtabs,setParam,rerender,renderModulation,filterRate,samplePanel}){
   let op=0,page=0,modalPage=0,transient,expanded=!matchMedia('(max-height: 500px)').matches;
   const get=ids=>ids.map(id=>descriptor(id)).filter(Boolean);
   const close=()=>{transient?.close();transient?.remove();transient=null;};
@@ -22,7 +22,7 @@ export function createSynthPanel({el,param,descriptor,descriptors,metadata,algor
     const exp=add('expression','LEVEL / VELOCITY / KEY TRACK'),coarse=el('button','velocity-coarse','VEL PITCH > COARSE');coarse.setAttribute('role','switch');coarse.onclick=()=>setParam('vel_coarse',param('vel_coarse')^(1<<op));coarse.dataset.readback='';coarse.sync=()=>coarse.setAttribute('aria-checked',!!(param('vel_coarse')>>op&1));coarse.sync();mountOperatorRows({root:exp,el,prefix,rows:operatorSections.expression,descriptor,field,special:coarse});
     const env=add('envelope',param(prefix+'mode')===8?'ENVELOPE > EXCITATION':'ENVELOPE');mountOperatorRows({root:env,el,prefix,rows:operatorSections.envelope,descriptor,field});
     const graph=envelopeView({param,prefix,times:metadata().envMs,setParam,interactive:true});graph.dataset.readback='';const syncEnvelope=graph.sync;graph.sync=()=>{syncEnvelope();graph.classList.toggle('inactive-param',param(prefix+'level')===0||param(prefix+'mode')===7);};graph.sync();env.append(graph);
-    const mode=param(prefix+'mode'),modeRoot=add('mode',`MODE: ${modes[mode]}`);mountOperatorMode({root:modeRoot,el,prefix,mode,fx:param(prefix+'a'),models:metadata().models,modalPage,descriptor,field,subtabs,showWave:!expanded,onModalPage:i=>{modalPage=i;rerender();}});
+    const mode=param(prefix+'mode'),modeRoot=add('mode',`MODE: ${modes[mode]}`);mountOperatorMode({root:modeRoot,el,prefix,mode,fx:param(prefix+'a'),models:metadata().models,modalPage,descriptor,field,subtabs,showWave:!expanded,onModalPage:i=>{modalPage=i;rerender();}});if(mode===12)samplePanel?.render(modeRoot,prefix);
   }
   function filters(root){
     const board=el('div','operator-board filter-board native-filter-board');root.append(board);

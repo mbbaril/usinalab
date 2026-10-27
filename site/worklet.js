@@ -32,11 +32,7 @@ class UsinaProcessor extends AudioWorkletProcessor {
       this.m = m;
       m._web_seed(seed);
       if (!m._web_init(sampleRate, oversampling)) throw Error('Taxa de audio invalida');
-      this.input = [0, 1].map(c => new Float32Array(m.HEAPF32.buffer, m._web_input(c), 128));
-      this.output = [0, 1].map(c => new Float32Array(m.HEAPF32.buffer, m._web_output(c), 128));
-      this.functionBuffer = new Float32Array(m.HEAPF32.buffer, m._web_function_buffer(), 64 * 3);
-      this.chordBuffer = new Int32Array(m.HEAPF32.buffer, m._web_chord_buffer(), 16);
-      this.durationBuffer = new Float32Array(m.HEAPF32.buffer,m._web_duration_buffer(),16);
+      this.views();
       this.ready = true;
       this.port.postMessage({ type: 'ready', metadata: JSON.parse(m.UTF8ToString(m._web_schema())), sampleRate, oversampling });
     }).catch(error => { this.failed = true; this.port.postMessage({ type: 'error', message: String(error) }); });
@@ -95,6 +91,18 @@ class UsinaProcessor extends AudioWorkletProcessor {
             m._web_function(data.index, data.points.length);
           }
           break;
+        case 'sample':                                   // SAMPLE's recording (engines/fm/FmSample.h): mono, its rate
+          if (data.samples instanceof Float32Array && data.samples.length > 0) {
+            const n = Math.min(data.samples.length, Math.round(30 * data.rate));
+            const ptr = m._web_sample_buffer(n);         // (the memory may grow here: the views made again)
+            this.views();
+            if (ptr) { new Float32Array(m.HEAPF32.buffer, ptr, n).set(data.samples.subarray(0, n)); m._web_sample(n, data.rate); }
+          } else m._web_sample(0, sampleRate);
+          break;
+        case 'capture':                                  // SAMPLE's capture: the input, up to 20 s, as it comes in
+          if (data.on) { this.capture = new Float32Array(Math.round(20 * sampleRate)); this.capturePos = 0; }
+          else this.finishCapture();
+          break;
         case 'maintenance': m._web_flush_edits(); break;
         case 'globals': m._web_globals(data.resolution, data.swing); break;
         case 'panic': this.panic(); break;
@@ -107,12 +115,21 @@ class UsinaProcessor extends AudioWorkletProcessor {
   setExpression(l,i,s={}){this.m._web_step_expression(l,i,s.accent??0,s.late??0,s.condition??0,s.pitchOffset??0,+!!s.inherit);}
   setStep(l,i,s){this.m._web_step(l,i,+s.on,s.note,s.velocity,s.probability,s.ratchet,s.gate);this.setExpression(l,i,s);this.setChord(l,i,s);}
   panic() { this.count = 0; if (this.m) this.m._web_midi(0xb0, 123, 0); }
+  // the views on the WebAssembly memory (made again whenever it may have grown: a recording's room)
+  views(){const m=this.m;this.input=[0,1].map(c=>new Float32Array(m.HEAPF32.buffer,m._web_input(c),128));this.output=[0,1].map(c=>new Float32Array(m.HEAPF32.buffer,m._web_output(c),128));
+    this.functionBuffer=new Float32Array(m.HEAPF32.buffer,m._web_function_buffer(),64*3);this.chordBuffer=new Int32Array(m.HEAPF32.buffer,m._web_chord_buffer(),16);this.durationBuffer=new Float32Array(m.HEAPF32.buffer,m._web_duration_buffer(),16);}
+  // the capture ended (by hand or full): played from now, and given to the page (to keep it, to draw it)
+  finishCapture(){const c=this.capture;this.capture=null;if(!c||this.capturePos<sampleRate*0.01)return;const samples=c.slice(0,this.capturePos);
+    this.port.postMessage({type:'captured',samples,rate:sampleRate},[samples.buffer]);}
+  captureBlock(inp){if(!this.capture||!inp?.length)return;const a=inp[0],b=inp[1]||a,n=Math.min(a.length,this.capture.length-this.capturePos);
+    for(let i=0;i<n;++i)this.capture[this.capturePos+i]=0.5*(a[i]+b[i]);this.capturePos+=n;if(this.capturePos>=this.capture.length)this.finishCapture();}
   process(inputs, outputs) {
     const out = outputs[0];
     if (this.disposed) return false;
     if (!this.ready || this.failed) return true;
     const n = out[0].length;
     const input = inputs[0];
+    if (this.capture) this.captureBlock(input);          // (SAMPLE's capture: the input as it came)
     let at = 0, consumed = 0;
     while (at < n) {
       while (consumed < this.count && this.frames[consumed] <= currentFrame + at) {

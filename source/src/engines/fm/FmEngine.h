@@ -20,6 +20,7 @@
 #include "FmLpg.h"
 #include "FmChaos.h"
 #include "FmMacroModels.h"
+#include "FmSample.h"
 #include <memory>
 #include <array>
 #include <cstdint>
@@ -46,6 +47,10 @@ public:
     void allNotesOff(int channel = -1);
     // adds the voices into out (stereo; mono for now, the same in both), n samples
     void render(float* left, float* right, int n);
+    // SAMPLE (FmSample.h): the recording the SAMPLE operators play - given on the message thread (nullptr: none),
+    // taken by the audio thread at its next block; collectSample frees the one it let go (message thread, any time)
+    void setSample(std::unique_ptr<SampleData> s) { sampleSlot.give(std::move(s)); }
+    void collectSample() { sampleSlot.collect(); }
     int activeVoices() const;
     // the links of a preset algorithm (0..39) as the engine makes them: links[from][to] in OP order (OP1 = 0), 1.0
     // a link, ALG FB's amount on its link; carriers: bit k = OP(k + 1) is heard
@@ -126,6 +131,7 @@ private:
         Stochastic stoch;                        // STOCHASTIC: its breakpoints (FmChaos.h)
         double eg = 0.0, deg = 0.0, egEnd = 0.0; // MODAL: the envelope on the excitation (its ramp, as g's)
         double strikeVel = -1.0;                 // MODAL: a note's strike, struck at its first control block (0..1)
+        SamplePlay sp;                           // SAMPLE: where this voice reads the recording
     };
     struct Voice {
         bool active = false, gate = false;
@@ -273,6 +279,8 @@ private:
     std::vector<Voice> voices = std::vector<Voice>(kMaxVoices);
     // the MACRO operators' models (FmMacro.h), one set for each voice's operator (voice x 6 + k), made in prepare()
     std::vector<std::unique_ptr<Macro, MacroDelete>> macros;
+    SampleSlot sampleSlot;                       // SAMPLE: the recording handed over (FmSample.h)
+    const SampleData* smp = nullptr;             // (the audio thread's: the one this block plays; nullptr none)
     uint64_t ageCounter = 0;
 };
 

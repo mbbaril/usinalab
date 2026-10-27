@@ -1,0 +1,22 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* CABINE REMOTA (docs/CABINE_REMOTA.md): the switch, the port, the seven surfaces and the 9 x 9 board */
+.remote-switch{display:flex;gap:6px;align-items:center;margin:2px 0 8px;font:10px var(--mono);color:#999}
+.cabine-remote{display:flex;flex-direction:column;gap:6px;height:100%;min-height:0;overflow:hidden!important}
+.remote-head{display:flex;gap:6px;align-items:center;flex:none}.remote-head select{flex:1;min-width:90px;min-height:36px;background:#111;color:var(--text);border:1px solid var(--line)}
+.remote-link{font:10px var(--mono);color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:35%}
+.remote-surfaces{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;flex:none}.remote-surfaces .play-toggle{min-width:0;padding:4px 2px;font-size:10px}
+.remote-board{flex:1;min-height:0;display:grid;grid-template-columns:repeat(8,minmax(0,1fr)) minmax(0,.8fr);grid-template-rows:minmax(0,.6fr) repeat(8,minmax(0,1fr));gap:4px;
+  aspect-ratio:9/8.6;max-height:100%;max-width:100%;margin:0 auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.remote-pad,.remote-button{background:#000;border:1px solid #2a2a28;border-radius:4px;touch-action:none;min-width:0;min-height:0}
+.remote-button{border-radius:50%}.remote-button.top{border-radius:4px}
+.remote-pad:active,.remote-button:active{outline:2px solid #fff;outline-offset:-2px}
+/* a short screen (the phone lying down): the switch, the port and the surfaces in a column, the board the whole height */
+@media (max-height:520px){
+  .cabine-remote{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:6px}
+  .cabine-remote>.remote-switch,.cabine-remote>.remote-head,.cabine-remote>.remote-surfaces{grid-column:1;margin:0}
+  .cabine-remote>.remote-head{flex-wrap:wrap}.cabine-remote>.remote-head select{flex-basis:100%;order:-1;min-height:30px}
+  .cabine-remote>.remote-surfaces{grid-template-columns:1fr 1fr;align-content:start}
+  .cabine-remote>.remote-board{grid-column:2;grid-row:1/-1;height:100%}
+  .remote-link{max-width:100%}
+}
+.remote-allow{display:flex;gap:8px;align-items:center;margin:10px 0;font:11px var(--mono);color:#ccc}

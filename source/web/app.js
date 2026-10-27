@@ -11,6 +11,9 @@ import { controlChoices, choiceDisabled, displayValue, sourceColor, configureCon
 import { installPerformance } from './performance.js';
 import { createCabine } from './cabine.js';
 import { createMpeController } from './mpe-controller.js';
+import { createPlaySurface } from './play-surface.js';
+import { createCabineRemote } from './cabine-remote.js';
+import { createSamplePanel } from './sample-panel.js';
 import { mountModulationTray } from './modulation-tray.js';
 import { sourceBank,openSourcePicker,closeSourcePicker } from './modulation-sources.js';
 import { installInstrumentShell } from './instrument-shell.js';
@@ -31,16 +34,20 @@ import {createModulationFeedback} from './modulation-feedback.js';
 import {createSourceScopes} from './source-scope.js';
 import {createSequencePanel} from './sequence-panel.js';
 import {createSequenceGenerator} from './sequence-generator.js';
+import {NativeAudioNode} from './native-audio-node.js';
+import {openAudioBackend} from './native-audio-transport.js';
 const $ = id => document.getElementById(id);
 if (window.Capacitor?.isNativePlatform()) document.documentElement.classList.add('native-app');
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const shell=installInstrumentShell({el}),pickup=new MidiPickup();
 const categories = Object.fromEntries(presetCategories);
-const modes = ['FM', 'RING', 'FILTER', 'FILTER FM', 'FOLD', 'EFFECT', 'BYPASS', 'MUTE', 'MODAL', 'CHAOS', 'STOCHASTIC', 'MACRO'];
+const modes = ['FM', 'RING', 'FILTER', 'FILTER FM', 'FOLD', 'EFFECT', 'BYPASS', 'MUTE', 'MODAL', 'CHAOS', 'STOCHASTIC', 'MACRO', 'SAMPLE'];
 const effects = ['NONE', 'TEXTURE', 'ROOM', 'DISTORT', 'IR · pendente', 'VAPOR', 'DELAY'];
 const fxSlots = ['fx_a', 'fx_b', 'aux', 'loop'].flatMap(bus => ['', '2', '3'].map(slot => `${bus}${slot}_type`));
 const state = { params: {}, routes: [], sequence: Array.from({ length: 9 }, (_, lane) => Array.from({ length: 64 }, () => ({ on: false, inherit: true, note: lane >= 5 ? [36, 41, 48, 55][lane - 5] : 60, velocity: lane > 0 && lane < 5 ? 64 : 100, probability: 1, ratchet: 1, gate: .5 }))), lanes: Array.from({ length: 9 }, () => ({ length: 16, direction: 0, mul: 1, div: 1, mute: false })), resolution: 4, swing: 0, preset: 'CORDA FM' };
 let context, node, analyser, meta, algorithmData, descriptors = [], seqCursors = Array(9).fill(-1), byId = new Map(), byName = new Map(), library = [], view = 'operators', lane = 0, midi, inputStream, inputNode, pendingParams = new Map(), flushQueued = false, audioReady = false;
+let nativeInput = false, preferNativeAudio = true;
+function audioBackendPreference(){try{return localStorage.getItem('usina.audio-backend')||'auto';}catch{return'auto';}}
 let selectedPreset, selectedStep = 0, learnParameter = null, learnControl = -1, selectedSource = null, directLearn = false, layoutPending = false, sourcesExpanded = false;
 const keyboardVisibility={perform:true,operators:true,modulation:true,effects:true,sequence:true};
 $('keybed-toggle').onclick=()=>{if(keyboardVisibility[view])localKeyboard.stop();keyboardVisibility[view]=!keyboardVisibility[view];renderView();};
@@ -62,12 +69,32 @@ const localKeyboard=createLocalKeyboard({el,note:(...args)=>{const packet=sequen
 const sequenceGenerator=createSequenceGenerator({state,send,message,changed:()=>{if(view==='sequence')sequencePanel.refresh();}});
 const sequencePanel=createSequencePanel({el,state,param,setParam,send,subtabs,generator:sequenceGenerator,metadata:()=>meta,cursors:()=>seqCursors});
 const fxPanel=createFxPanel({el,param,setParam,descriptors:()=>descriptors,metadata:()=>meta,field,section:controlSection,subtabs,slots:fxSlots,effects,rerender:renderView,tapDelay:time=>renderCabine.tapDelay(time),tapText:()=>renderCabine.tapDelayText()});
-const synthPanel=createSynthPanel({el,param,descriptor:id=>byId.get(id),descriptors:()=>descriptors,metadata:()=>meta,algorithms:()=>algorithmData,field,section:controlSection,subtabs,setParam,rerender:renderView,renderModulation,filterRate:()=>({rate:(context?.sampleRate||48000)*(+$('quality').value),firmware:+$('quality').value===1})});
+// SAMPLE (engines/fm/FmSample.h): the recording, given to the engine at every start of the audio
+// (the Android native engine has no recording message yet: there, I/O -> Compatibilidade plays it)
+const samplePanel=createSamplePanel({el,send:m=>{if(node instanceof NativeAudioNode){if(m.samples||m.on)message('SAMPLE: no áudio nativo do Android ainda não - use I/O → Compatibilidade.',true);return;}send(m);},status:(t,e)=>message(t,e),param,context:()=>context});
+const synthPanel=createSynthPanel({samplePanel,el,param,descriptor:id=>byId.get(id),descriptors:()=>descriptors,metadata:()=>meta,algorithms:()=>algorithmData,field,section:controlSection,subtabs,setParam,rerender:renderView,renderModulation,filterRate:()=>({rate:(context?.sampleRate||48000)*(+$('quality').value),firmware:+$('quality').value===1})});
 const modPanel=createModPanel({tapLfo:(i,time)=>renderCabine.tapLfo(i,time),tapText:i=>renderCabine.tapLfoText(i),el,param,setParam,scopes:sourceScopes,metadata:()=>meta,descriptors:()=>descriptors,field,section:controlSection,subtabs,rerender:renderView,state,send,renderRoutes:renderRouteList,feedback:modulationFeedback,learning:()=>learnControl,persist:persistMappings,learnController:i=>{cabineActionMidi.stopLearn();learnParameter=null;directLearn=false;selectedSource=null;learnControl=learnControl===i?-1:i;renderAddressBar();refreshAddresses();if(learnControl>=0){ensureMidi();message(`CTRL ${i+1}: mova um CC ou toque uma nota.`);}else message('MIDI Learn encerrado.');},forgetController:i=>{if(learnControl===i)learnControl=-1;state.controllerBindings[i]=null;send({type:'control',index:i,value:0});persistMappings();message(`CTRL ${i+1}: Forget.`);}});
 const renderCabine = createCabine({ el, state, metadata: () => meta, param, descriptors: () => descriptors, setParam, send, note, library: () => library, choosePreset, message, cursors:()=>seqCursors,changed:()=>{if(view==='cabine')renderView();} });
 const cabineActionMidi=createCabineActions({state,run:(...args)=>{renderCabine.runAction(...args);modPanel.refresh();if(view==='effects')$('view').refreshFx?.();if(view==='cabine')$('view').refreshCabine?.();},changed:keep=>{if(keep)persistMappings();mappingPanel.refresh();}});
 const mappingPanel=createMappingPanel({el,state,metadata:()=>meta,actions:cabineActionMidi,prepareLearn:()=>{learnParameter=null;learnControl=-1;directLearn=false;selectedSource=null;renderAddressBar();refreshAddresses();ensureMidi();},save:saveDocument,replace:replaceMappings,message});
 const mpeController = createMpeController({ el, status: message });
+// PLAY (docs/PLAY.md): HERE plays this engine (notes, macro1..4 mapped from -1..1 onto their ranges); CONTROL a MIDI output
+// CABINE REMOTA (docs/CABINE_REMOTA.md): the plugin's CABINE on this screen, over MIDI; its colours come in by the
+// MIDI input (handleMidi gives them to it first) - the app's own CABINE when off
+const cabineRemote = createCabineRemote({ el, status: message, listen: () => ensureMidi() });
+// (hidden from the public site until the plugin is public: ?remota=1 shows it, and keeps it shown on this device;
+// Configuracoes switches it too - the APK has no address bar)
+let cabineRemoteAllowed = (()=>{try{if(new URLSearchParams(location.search).get('remota')==='1')localStorage.setItem('usina.remote-allowed','1');return localStorage.getItem('usina.remote-allowed')==='1';}catch{return false;}})();
+let cabineRemoteOn = cabineRemoteAllowed&&(()=>{try{return localStorage.getItem('usina.cabine-remote')==='1';}catch{return false;}})();
+function cabineSwitch(root){if(!cabineRemoteAllowed)return;const bar=el('div','remote-switch'),here=el('button','play-toggle','ESTE APP'),far=el('button','play-toggle','REMOTA (PLUGIN)');
+  here.setAttribute('aria-pressed',String(!cabineRemoteOn));far.setAttribute('aria-pressed',String(cabineRemoteOn));
+  const pick=on=>{if(on===cabineRemoteOn)return;if(!on)cabineRemote.leave();cabineRemoteOn=on;try{localStorage.setItem('usina.cabine-remote',on?'1':'0');}catch{}renderView();};
+  here.onclick=()=>pick(false);far.onclick=()=>pick(true);bar.append(el('span','','CABINE:'),here,far);root.append(bar);}
+const macroDescriptor=i=>byId.get(`macro${i+1}`);
+const playSurface = createPlaySurface({ el, status: message, local:{ note:(s,a,b)=>note(s,a,b),
+  setMacro(i,v){const d=macroDescriptor(i);if(d)setParam(d.id,d.min+(v+1)/2*(d.max-d.min));},
+  macro(i){const d=macroDescriptor(i);return d&&d.max>d.min?(param(d.id)-d.min)/(d.max-d.min)*2-1:0;},
+  mpe:()=>!byId.has('mpe_mode')||!!param('mpe_mode'), setMpe(on){if(byId.has('mpe_mode'))setParam('mpe_mode',on?1:0,true);} } });
 function persistMappings(){try{localStorage.setItem('usina.mappings.v1',exportMappings(state));}catch{message('Não foi possível guardar o mapa automaticamente. Use Exportar mapa.',true);}}
 function replaceMappings(next){releaseAll();cabineActionMidi.stopLearn();learnParameter=null;learnControl=-1;directLearn=false;const {ignored,...maps}=next;Object.assign(state,maps);pickup.reset();persistMappings();refreshAddresses();if(view==='connections')renderView();}
 function ensureMidi(){if(!midi)midi=new MidiConnection(handleMidi,text=>message(text),releaseAll);if(!midi.connected&&!midi.access)midi.connect().catch(e=>message(e.message,true));}
@@ -121,27 +148,28 @@ function wakeAudio() {
 document.addEventListener('pointerdown', wakeAudio, true);
 document.addEventListener('visibilitychange', wakeAudio);
 async function startAudio() {
-  if (!window.AudioContext || !window.AudioWorkletNode || !window.WebAssembly) throw Error('Este navegador não oferece o áudio necessário. Atualize o navegador ou use o app Usina.');
   $('start').disabled = true; $('start').textContent = 'Preparando…';
+  let startupNode;
   try {
-    claimPlaybackSession();
-    if (!context) { context = new AudioContext({ latencyHint: 'interactive' }); context.onstatechange = () => { sourceScopes.suspend(context.state!=='running'||document.hidden);modulationFeedback.suspend(context.state!=='running'||document.hidden);if (context.state !== 'running') releaseAll(); $('audio-status').textContent = context.state === 'running' ? `${context.sampleRate / 1000} kHz` : 'ÁUDIO PAUSADO'; }; }
-    await context.resume();
-    const response = await fetch('./usina.wasm'); if (!response.ok) throw Error('Motor de áudio não encontrado');
-    const module = await WebAssembly.compile(await response.arrayBuffer());
+    audioUserPaused=false;
+    await stopAudioInput();
     if (node) {
       releaseAll(); const old = node; audioReady = false;
-      await new Promise(resolve => { const timeout = setTimeout(resolve, 2000); old.port.onmessage = ({ data }) => { if (data.type === 'disposed') { clearTimeout(timeout); resolve(); } }; old.port.postMessage({ type: 'dispose' }); });
-      old.disconnect(); old.port.close();
+      if(old instanceof NativeAudioNode)await old.dispose();
+      else {
+        await new Promise(resolve => { const timeout = setTimeout(resolve, 2000); old.port.onmessage = ({ data }) => { if (data.type === 'disposed') { clearTimeout(timeout); resolve(); } }; old.port.postMessage({ type: 'dispose' }); });
+        old.disconnect();old.port.close();
+      }
+      node=null;
     }
-    await context.audioWorklet.addModule('./worklet.js');
-    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-    const nextNode = new AudioWorkletNode(context, 'usina', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { module, oversampling: +$('quality').value, seed } });
-    await new Promise((resolve, reject) => {
+    if(context instanceof NativeAudioNode){context=null;analyser=null;}
+    let nextNode,ready;
+    const waitForAudio = nextNode => new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('O motor demorou para iniciar. Tente uma qualidade menor.')), 45000);
-      nextNode.onprocessorerror = () => { audioReady = false; message('O motor de áudio parou. Ative o áudio novamente.', true); reject(Error('Falha no AudioWorklet')); };
+      nextNode.onprocessorerror = () => { clearTimeout(timer);audioReady = false; if(nextNode instanceof NativeAudioNode)preferNativeAudio=false; $('start').textContent='Ativar áudio';message('O motor de áudio parou. Ative o áudio novamente.', true); reject(Error('Falha no motor de áudio')); };
       nextNode.port.onmessage = ({ data }) => {
-        if (data.type === 'ready') { clearTimeout(timer); meta = data.metadata; resolve(); }
+        if (data.type === 'ready') { clearTimeout(timer); meta = data.metadata; resolve(); samplePanel.ready.then(()=>samplePanel.give()); }
+        else if(data.type==='captured'){samplePanel.captured(data);}
         else if (data.type === 'error') { clearTimeout(timer); message(data.message, true); reject(Error(data.message)); }
         else if(data.type==='modSources'){modulationFeedback.receive(data);}
         else if(data.type==='source'){sourceScopes.receive(data);}
@@ -154,7 +182,45 @@ async function startAudio() {
         }
       };
     });
+    if(preferNativeAudio&&audioBackendPreference()!=='web'&&window.Capacitor?.isNativePlatform()&&window.Capacitor.getPlatform()==='android') {
+      const {registerPlugin}=await import('./capacitor-core.js');
+      const opened=await openAudioBackend({nativePlugin:registerPlugin('UsinaAudio'),nativeEnabled:true,oversampling:+$('quality').value,
+        openWebAudio:async()=>null,openNative:async info=>{
+          if(info.capabilities.protocol<2||!info.capabilities.scheduledMidi||!info.capabilities.sourceSnapshot)throw Error('Ponte nativa incompatível');
+          const created=new NativeAudioNode({...info,oversampling:+$('quality').value});
+          startupNode=created;
+          ready=waitForAudio(created);ready.catch(()=>{});return created;
+        }});
+      if(opened.kind==='native') {
+        nextNode=opened.backend;
+        if(context){await context.close();analyser=null;}
+        context=nextNode;analyser=nextNode;
+      }
+    }
+    if(!nextNode) {
+      if (!window.AudioContext || !window.AudioWorkletNode || !window.WebAssembly) throw Error('Este navegador não oferece o áudio necessário. Atualize o navegador ou use o app Usina.');
+      claimPlaybackSession();
+      if(!context)context=new AudioContext({latencyHint:'interactive'});
+      await context.resume();
+      const response=await fetch('./usina.wasm');if(!response.ok)throw Error('Motor de áudio não encontrado');
+      const module=await WebAssembly.compile(await response.arrayBuffer());
+      await context.audioWorklet.addModule('./worklet.js');
+      const seed=crypto.getRandomValues(new Uint32Array(1))[0];
+      nextNode=new AudioWorkletNode(context,'usina',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{module,oversampling:+$('quality').value,seed}});
+      startupNode=nextNode;
+      ready=waitForAudio(nextNode);
+    }
+    const observed=context;
+    context.onstatechange=()=>{
+      if(context!==observed)return;
+      sourceScopes.suspend(context.state!=='running'||document.hidden);modulationFeedback.suspend(context.state!=='running'||document.hidden);
+      if(context.state!=='running'){releaseAll();if(context instanceof NativeAudioNode){nativeInput=false;$('input').textContent='Entrada de áudio';$('voices').textContent='00 VOZES';}}
+      $('audio-status').textContent=context.state==='running'?`${context.sampleRate/1000} kHz`:'ÁUDIO PAUSADO';
+    };
+    await ready;
+    if(nextNode instanceof NativeAudioNode)await nextNode.poll();
     node = nextNode; audioReady = true;modulationFeedback.suspend(false);
+    document.documentElement.dataset.audioBackend=node instanceof NativeAudioNode?'native':'web';
     configureControls(meta);
     if (!descriptors.length) {
       descriptors = meta.parameters.map((d, index) => ({ ...d, index }));
@@ -162,14 +228,20 @@ async function startAudio() {
       for (const d of descriptors) state.params[d.id] ??= d.default;
       choosePreset(selectedPreset || library.find(p => p.name === state.preset) || library[0], false);
     } else sendState();
-    if (!analyser) { analyser = context.createAnalyser(); analyser.fftSize = 2048; analyser.connect(context.destination); }
-    node.connect(analyser); if (inputNode) inputNode.connect(node);
+    if(!(node instanceof NativeAudioNode)) {
+      if (!analyser) { analyser = context.createAnalyser(); analyser.fftSize = 2048; analyser.connect(context.destination); }
+      node.connect(analyser);
+    }
     $('audio-status').textContent = `${context.sampleRate / 1000} kHz / ${$('quality').value}×`;
     document.querySelectorAll('.filter-response').forEach(n=>n.sync());
     $('start').textContent = 'Áudio ativo ●'; $('start').disabled = false; $('audition').disabled = false;
     message('Pronto. Toque no teclado ou use seu controlador.');sequencePanel.syncMidiMode(true);
     renderView();
-  } catch (error) { $('start').disabled = false; $('start').textContent = 'Ativar áudio ↗'; throw error; }
+  } catch (error) {
+    audioReady=false;
+    if(startupNode instanceof NativeAudioNode){await startupNode.dispose();if(context===startupNode){context=null;analyser=null;}if(node===startupNode)node=null;}
+    $('start').disabled=false;$('start').textContent='Ativar áudio ↗';throw error;
+  }
 }
 $('start').onclick = async () => {
   try {
@@ -331,15 +403,28 @@ function renderView() {
   closeMidiMenu();
   closeSourcePicker();
   performanceControls.sync();
-  if(meta)shell.output(root=>{root.append(el('h3','','INPUT / OUTPUT'));const grid=el('div','io-controls');for(const [id,name]of [['in_gain','IN GAIN'],['in_mix','IN MIX'],['in_fx','INPUT → FX'],['level','LEVEL'],['ceiling','CEILING']])grid.append(field({...byId.get(id),name,instance:'io'}));root.append(grid,$('quality').closest('label'));});
+  if(meta)shell.output(root=>{root.append(el('h3','','INPUT / OUTPUT'));const grid=el('div','io-controls');for(const [id,name]of [['in_gain','IN GAIN'],['in_mix','IN MIX'],['in_fx','INPUT → FX'],['level','LEVEL'],['ceiling','CEILING']])grid.append(field({...byId.get(id),name,instance:'io'}));root.append(grid,$('quality').closest('label'));
+    if(window.Capacitor?.isNativePlatform()&&window.Capacitor.getPlatform()==='android') {
+      const label=el('label','quality','Áudio '),select=el('select');select.id='audio-backend';select.setAttribute('aria-label','Modo de áudio');
+      for(const [value,text]of [['auto','Automático'],['web','Compatibilidade']]){const option=el('option','',text);option.value=value;select.append(option);}
+      select.value=audioBackendPreference();select.onchange=()=>{try{localStorage.setItem('usina.audio-backend',select.value);}catch{}preferNativeAudio=true;if(context)startAudio().catch(error=>message(error.message,true));};
+      label.append(select);root.append(label);
+    }
+  });
   renderAddressBar();
   shell.park();const root = $('view');root.cancelGestures?.();root.cancelGestures=null; root.replaceChildren();root.classList.remove('cabine-sequencing','synth-view','sequence-view','fx-view');document.documentElement.dataset.activeView=view;
   if(view!=='cabine')document.documentElement.classList.remove('cabine-expanded');
   const controllerMode=view==='controller',available=Object.hasOwn(keyboardVisibility,view),noKeys=!available||!keyboardVisibility[view];shell.keyboard(!noKeys,available);document.documentElement.classList.toggle('controller-mode',controllerMode);document.documentElement.classList.toggle('no-keybed',noKeys);$('local-keys').hidden=noKeys;
   localKeyboard.sync();
   if(controllerMode){mpeController.render(root);return;}root.classList.remove('mpe-controller');
+  if(view==='play'){playSurface.render(root);return;}
+  if(view==='cabine'&&cabineRemoteOn){cabineSwitch(root);cabineRemote.render(root);return;}
   if(view==='credits'){renderCredits(root,el);return;}
-  if(view==='connections'){root.append(el('h2','','Conexões e sessões'));shell.connections(root);mappingPanel.render(root);if(meta)controlSection(root,'Performance MIDI',descriptors.filter(d=>['mpe_mode','bend_range','mpe_bend_range'].includes(d.id)));renderMidiMaps(root);return;}
+  if(view==='connections'){root.append(el('h2','','Conexões e sessões'));shell.connections(root);
+    {const label=el('label','remote-allow'),box=el('input');box.type='checkbox';box.checked=cabineRemoteAllowed;
+      box.onchange=()=>{cabineRemoteAllowed=box.checked;try{localStorage.setItem('usina.remote-allowed',box.checked?'1':'0');}catch{}if(!box.checked){cabineRemote.leave();cabineRemoteOn=false;}};
+      label.append(box,' CABINE REMOTA (experimental: a CABINE do plugin Usina neste aparelho, por MIDI USB)');root.append(label);}
+mappingPanel.render(root);if(meta)controlSection(root,'Performance MIDI',descriptors.filter(d=>['mpe_mode','bend_range','mpe_bend_range'].includes(d.id)));renderMidiMaps(root);return;}
   if (!meta) { root.append(el('div', 'empty-state', 'Ative o áudio para abrir os controles do instrumento.')); return; }
   if (view === 'perform') {
     const caption = el('div', 'view-caption'); caption.append(el('span', '', 'MACROS / PERFORMANCE'), el('span', '', 'ARRASTE PARA CIMA OU PARA BAIXO'));
@@ -350,10 +435,10 @@ function renderView() {
   } else if (view === 'effects') {
     fxPanel.render(root);
   } else if (view === 'modulation') renderModulation(root);
-  else if (view === 'cabine') renderCabine(root);
+  else if (view === 'cabine') {cabineSwitch(root);renderCabine(root);}
   else if (view === 'sequence') renderSequence(root);
 }
-document.querySelectorAll('[data-view]').forEach(b => { b.onclick = () => { if(view==='controller')mpeController.leave();if(b.dataset.view==='controller'){directLearn=false;learnParameter=null;learnControl=-1;selectedSource=null;sourcesExpanded=false;releaseAll();if(meta)setParam('seq_play',0,true);if(context?.state==='running')context.suspend().then(()=>{$('start').textContent='Retomar áudio ↗';});}view = b.dataset.view; document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('active', x === b)); renderView(); }; });
+document.querySelectorAll('[data-view]').forEach(b => { b.onclick = () => { if(view==='controller')mpeController.leave();if(view==='play'&&b.dataset.view!=='play')playSurface.leave();if(view==='cabine'&&b.dataset.view!=='cabine')cabineRemote.leave();if(b.dataset.view==='controller'){directLearn=false;learnParameter=null;learnControl=-1;selectedSource=null;sourcesExpanded=false;releaseAll();if(meta)setParam('seq_play',0,true);if(context?.state==='running')context.suspend().then(()=>{$('start').textContent='Retomar áudio ↗';});}view = b.dataset.view; document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('active', x === b)); renderView(); }; });
 function renderModulation(root){modPanel.render(root);}
 function renderRouteList(root) {mountRouteList({root,el,state,metadata:()=>meta,send,changed:refreshAddresses});}
 
@@ -369,7 +454,7 @@ function renderSequence(root){sequencePanel.render(root);}
 // in larger bursts; the dono: "atraso pra tocar"). Only a note given a time (the audition's release, MIDI with a
 // future timestamp) is scheduled.
 function note(status, a, b, when) {
-  if (!audioReady) { message('Ative o áudio para tocar.'); return; }
+  if (!audioReady || context?.state!=='running') { message('Ative o áudio para tocar.'); return; }
   if (diag && (status & 0xf0) === 0x90 && b > 0 && performance.now() - diag.down < 1000) diag.touch = performance.now() - diag.down;
   send({ type: 'midi', status, a, b, frame: when === undefined ? undefined : Math.round(Math.max(context.currentTime, when) * context.sampleRate) });
 }
@@ -382,6 +467,15 @@ if (diag) {
   document.body.append(strip);
   setInterval(() => {
     const ms = v => Number.isFinite(v) ? (v * 1000).toFixed(1) + ' ms' : 'n/d';
+    if(context instanceof NativeAudioNode) {
+      const report=context.diagnostics;
+      strip.textContent=report?`NATIVO ${context.sampleRate} Hz / ${$('quality').value}× · saída ${ms(report.latencyMs/1000)} · buffer ${ms(report.bufferMs/1000)} · xruns ${report.xruns} · render ${ms(report.renderMeanUs/1e6)} · ${context.state}`:'NATIVO · aguardando medição';
+      if(!context.diagnosticBusy&&context.state==='running') {
+        const observed=context;observed.diagnosticBusy=true;
+        observed.report().then(value=>observed.diagnostics=value).catch(()=>{}).finally(()=>observed.diagnosticBusy=false);
+      }
+      return;
+    }
     strip.textContent = context ? `${context.sampleRate} Hz  ${$('quality').value}x  base ${ms(context.baseLatency)}  saída ${ms(context.outputLatency)}  ` +
       `bloco iOS ${diag.burst} (${ms(diag.burst / context.sampleRate)})  toque→nota ${Number.isFinite(diag.touch) ? diag.touch.toFixed(1) + ' ms' : '—'}  ${context.state}` : 'diag: ative o áudio';
   }, 500);
@@ -393,11 +487,12 @@ $('audition').onclick = () => { const n = selectedPreset?.note >= 24 && selected
 function keyboard(){localKeyboard.render();}
 
 let keyboardWidth = window.innerWidth;
-window.addEventListener('resize', () => { if (window.innerWidth !== keyboardWidth) { keyboardWidth = window.innerWidth; mpeController.resize(); keyboard(); } });
+window.addEventListener('resize', () => { if (window.innerWidth !== keyboardWidth) { keyboardWidth = window.innerWidth; mpeController.resize(); playSurface.resize(); keyboard(); } });
 installTypingKeyboard({target:window,base:()=>+$('octave').dataset.base,press:(id,n)=>localKeyboard.press(id,n),release:id=>localKeyboard.release(id),escape:()=>{cabineActionMidi.stopLearn();closeMidiMenu();directLearn=false;learnParameter=null;learnControl=-1;selectedSource=null;sourcesExpanded=false;document.querySelectorAll('.midi-actions').forEach(n=>n.remove());renderAddressBar();refreshAddresses();}});
 window.addEventListener('focus',()=>modulationFeedback.suspend(document.hidden||context?.state!=='running'));
 window.addEventListener('blur', ()=>{modulationFeedback.suspend(true);releaseAll();mpeController.stop();}); document.addEventListener('visibilitychange', () => { sourceScopes.suspend(document.hidden||context?.state!=='running');modulationFeedback.suspend(document.hidden||context?.state!=='running');if (document.hidden){releaseAll();mpeController.stop();} });
 function handleMidi({ status, a, b, timestamp = performance.now() }) {
+  if(cabineRemote.receive(status,a,b))return;   // (the plugin's colours for the CABINE REMOTA: not the app's controls)
   if(view==='controller')return;
   performanceControls.receiveMidi(status,a,b);
   localKeyboard.receiveMidi(status,a,b);
@@ -432,10 +527,24 @@ $('ble').onclick = async () => {
     await midi.bluetooth();
   } catch (e) { message(e.message, true); }
 };
+async function stopAudioInput() {
+  if(nativeInput&&node instanceof NativeAudioNode&&!node.transport.closed)await node.transport.enqueue(()=>node.plugin.stopInput());
+  nativeInput=false;
+  if(inputNode)inputNode.disconnect();
+  inputStream?.getTracks().forEach(track=>track.stop());inputNode=inputStream=null;
+  $('input').textContent='Entrada de áudio';
+}
 $('input').onclick = async () => {
   try {
-    if (!audioReady) throw Error('Ative o áudio antes de conectar a entrada.');
-    if (inputStream) { inputNode.disconnect(); inputStream.getTracks().forEach(t => t.stop()); inputStream = inputNode = null; setParam('in_mix', 0, true); $('input').textContent = 'Entrada de áudio'; return; }
+    if (!audioReady||context?.state!=='running') throw Error('Ative o áudio antes de conectar a entrada.');
+    if (inputStream||nativeInput) {await stopAudioInput();setParam('in_mix',0,true);return;}
+    setParam('in_mix',0,true);
+    if(node instanceof NativeAudioNode) {
+      const active=node,result=await active.transport.enqueue(()=>active.plugin.startInput(),{fatal:false});
+      if(node!==active||active.disposed)return;
+      if(!result.channels)throw Error('Não foi possível abrir a entrada de áudio.');
+      nativeInput=true;$('input').textContent='Desconectar entrada';message('Entrada conectada e muda. Abra I/O e ajuste IN MIX.');return;
+    }
     inputStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 } });
     inputNode = context.createMediaStreamSource(inputStream); inputNode.connect(node); $('input').textContent = 'Desconectar entrada'; message('Entrada conectada e muda. Abra I/O e ajuste IN MIX.');
   } catch (e) { message(e.message, true); }
@@ -499,7 +608,8 @@ $('load').onchange = async e => {
 };
 const scopeData = new Float32Array(2048); let lastDraw = 0;
 function draw(now) {
-  requestAnimationFrame(draw); if (document.hidden || now - lastDraw < 33) return; lastDraw = now;
+  requestAnimationFrame(draw);analyser?.enableScope?.(!document.hidden&&$('scope').getClientRects().length>0);
+  if (document.hidden || now - lastDraw < 33) return; lastDraw = now;
   const canvas = $('scope'), ratio = Math.min(2, devicePixelRatio || 1), w = Math.round(canvas.clientWidth * ratio), h = Math.round(canvas.clientHeight * ratio);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   const g = canvas.getContext('2d'); g.clearRect(0, 0, w, h); g.strokeStyle = '#32452b'; g.lineWidth = 1;
@@ -522,3 +632,6 @@ const localPreview=['localhost','127.0.0.1'].includes(location.hostname)&&new UR
 if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform() && !localPreview) {
   navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
+// what is new (once a device, a release): said on the status line until the audio starts
+{const NEWS={id:'2026-10-27',text:'Novo nesta alfa: a aba PLAY (teclas grandes, macros, instantâneos e XY) e o operador SAMPLE (MODE → SAMPLE: uma gravação como operador). Alfa: pode mudar.'};
+  try{if(localStorage.getItem('usina.news')!==NEWS.id){localStorage.setItem('usina.news',NEWS.id);message(NEWS.text);}}catch{}}

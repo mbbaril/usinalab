@@ -1,4 +1,4 @@
-# Usina Web / Android Lab 0.1.45
+# Usina Web / Android Lab 0.1.46
 
 O APK utiliza o motor C++ do Usina atual, compilado para WebAssembly, e funciona offline.
 A navegação principal segue SYNTH / FX / SEQ / CABINE. Licenças e créditos ficam disponíveis no MENU.

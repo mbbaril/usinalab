@@ -317,6 +317,8 @@ void UsinaProcessor::timerCallback()
     }
     applyCcMaps();
     runPendingActions();
+    engine.collectSample();                              // (SAMPLE: a recording the audio thread let go, freed here)
+    if (capWasArmed && (!capArmed.load() || capFull.load())) captureFinish();
 }
 
 // the actions that came: run on this (the message) thread, in order
@@ -795,6 +797,10 @@ void UsinaProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamples
         const int maxLatency = juce::jmax(4096, (int)std::ceil(0.08 * sampleRate));
         for (auto* a : { &matchDry[0], &matchDry[1], &matchPad[0], &matchPad[1], &matchPar }) a->prepare(sampleRate, maxLatency);
     }
+    capArmed.store(false);                               // (SAMPLE's capture: kCaptureSeconds at this rate)
+    capBuf.assign((size_t)(kCaptureSeconds * sampleRate) + 1, 0.0f);
+    capPos.store(0);
+    capRate = sampleRate;
     seq.prepare(sampleRate);
     seqEvents.assign(1024, {});
     seqMidi.ensureSize(32768);                          // (the block's merged MIDI: never grown on the audio thread)
@@ -1243,6 +1249,18 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     }
     const float* inL = inCh > 0 ? input.getReadPointer(0) : nullptr;
     const float* inR = inCh > 1 ? input.getReadPointer(1) : inL;
+    if (capArmed.load(std::memory_order_acquire) && inL != nullptr) {   // SAMPLE's capture: the input after IN GAIN,
+        const float g = 0.5f * juce::Decibels::decibelsToGain(pInGain->load());   // mono (before IN MIX)
+        int p = capPos.load(std::memory_order_relaxed);
+        const int room = juce::jmin(n, (int)capBuf.size() - p);
+        for (int i = 0; i < room; ++i) capBuf[(size_t)(p + i)] = (inL[i] + inR[i]) * g;
+        p += juce::jmax(0, room);
+        capPos.store(p, std::memory_order_release);
+        if (p >= (int)capBuf.size()) {
+            capFull.store(true, std::memory_order_release);
+            capArmed.store(false, std::memory_order_release);
+        }
+    }
     const bool toFx = inL != nullptr && (inFxMix.isSmoothing() || inFxMix.getTargetValue() > 0.0f);
     const int toFxLen = toFx ? juce::jmin(gainLen, cap, (int)fxDryL.size()) : 0;
     for (int i = 0; i < toFxLen; ++i) {
@@ -1480,6 +1498,105 @@ void UsinaProcessor::irClear()
     irMissing = false;
 }
 
+// --- SAMPLE ---------------------------------------------------------------------------------------------------------
+juce::File UsinaProcessor::sampleFolder()
+{
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Usina").getChildFile("Samples");
+}
+
+void UsinaProcessor::sampleTake(std::unique_ptr<usina::fm::SampleData> s)
+{
+    // the drawing: 256 columns, each its lowest and highest
+    peaks.assign(512, 0.0f);
+    sampleLength = 0.0;
+    if (s != nullptr && !s->data.empty()) {
+        const size_t n = s->data.size();
+        sampleLength = (double)n / s->rate;
+        for (size_t c = 0; c < 256; ++c) {
+            const size_t a = c * n / 256, b = juce::jmax(a + 1, (c + 1) * n / 256);
+            float lo = 0.0f, hi = 0.0f;
+            for (size_t i = a; i < b && i < n; ++i) {
+                lo = juce::jmin(lo, s->data[i]);
+                hi = juce::jmax(hi, s->data[i]);
+            }
+            peaks[c * 2] = lo;
+            peaks[c * 2 + 1] = hi;
+        }
+    } else {
+        peaks.clear();
+    }
+    engine.setSample(std::move(s));
+}
+
+bool UsinaProcessor::sampleLoad(const juce::File& f)
+{
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(f));
+    if (reader == nullptr || reader->sampleRate <= 0.0 || reader->lengthInSamples <= 0) return false;
+    const int len = (int)juce::jmin<juce::int64>(reader->lengthInSamples, (juce::int64)(kSampleMaxSeconds * reader->sampleRate));
+    const int ch = (int)juce::jmax(1u, reader->numChannels);
+    juce::AudioBuffer<float> buf(ch, len);
+    if (!reader->read(&buf, 0, len, 0, true, true)) return false;
+    auto s = std::make_unique<usina::fm::SampleData>();
+    s->rate = reader->sampleRate;
+    s->data.assign((size_t)len, 0.0f);                   // (mono: the channels' average)
+    for (int c = 0; c < ch; ++c) {
+        const float* x = buf.getReadPointer(c);
+        for (int i = 0; i < len; ++i) s->data[(size_t)i] += x[i] / (float)ch;
+    }
+    sampleTake(std::move(s));
+    samplePath = f.getFullPathName();
+    sampleMissing = false;
+    return true;
+}
+
+void UsinaProcessor::sampleClear()
+{
+    sampleTake(nullptr);
+    samplePath.clear();
+    sampleMissing = false;
+}
+
+void UsinaProcessor::sampleCapture(bool on)
+{
+    if (on) {
+        if (capArmed.load() || capBuf.empty()) return;
+        capFull.store(false);
+        capPos.store(0);
+        capWasArmed = true;
+        capArmed.store(true, std::memory_order_release);
+    } else {
+        capArmed.store(false, std::memory_order_release);
+    }
+}
+
+// the capture stopped (by hand or full): what it took as a recording, and as a WAV file to be kept by its path
+void UsinaProcessor::captureFinish()
+{
+    capWasArmed = false;
+    const int n = capPos.load(std::memory_order_acquire);
+    if (n < (int)(0.01 * capRate)) return;               // (less than 10 ms: nothing to keep)
+    auto s = std::make_unique<usina::fm::SampleData>();
+    s->rate = capRate;
+    s->data.assign(capBuf.begin(), capBuf.begin() + n);
+    const auto dir = sampleFolder();
+    dir.createDirectory();
+    const auto file = dir.getNonexistentChildFile("CAPTURA " + juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S"), ".wav");
+    bool written = false;
+    if (std::unique_ptr<juce::OutputStream> os = file.createOutputStream()) {
+        juce::WavAudioFormat wav;
+        const auto options = juce::AudioFormatWriterOptions {}.withSampleRate(capRate).withNumChannels(1).withBitsPerSample(24);
+        if (auto writer = wav.createWriterFor(os, options)) {   // (the writer owns the stream now)
+            const float* chans[1] = { s->data.data() };
+            written = writer->writeFromFloatArrays(chans, 1, n);
+        }
+    }
+    sampleTake(std::move(s));
+    samplePath = written ? file.getFullPathName() : juce::String();
+    sampleMissing = false;
+}
+
 const char* UsinaProcessor::fxBusOnId(int bus)
 {
     static const char* const I[kFxBuses] = { "fx_a_on", "fx_b_on", "aux_on", "loop_fx_on" };
@@ -1644,10 +1761,12 @@ juce::ValueTree UsinaProcessor::stateTree()
     st.appendChild(seqToTree(seqPatternMsg), nullptr);
     // the mappings (CTRLS v6, CCMAP and CABACT 22/10) as children of the state, as before; the CABINE's own (22/10)
     const auto maps = mappingsTree();
-    for (const char* name : { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD", "CABINE" }) st.removeChild(st.getChildWithName(name), nullptr);
+    for (const char* name : { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD", "CABINE", "PLAY" }) st.removeChild(st.getChildWithName(name), nullptr);
     for (int i = 0; i < maps.getNumChildren(); ++i) st.appendChild(maps.getChild(i).createCopy(), nullptr);
     if (cabineModel != nullptr) st.appendChild(cabineModel->toTree(), nullptr);
+    st.appendChild(playTree.createCopy(), nullptr);    // the PLAY view's (27/10): snapshots, XY, layout
     st.setProperty("irFile", irPath, nullptr);         // the IR's file, by its path (v6; the file itself is the user's)
+    st.setProperty("sampleFile", samplePath, nullptr); // SAMPLE's recording, by its path (27/10; a capture is a file too)
     return st;
 }
 
@@ -1928,8 +2047,22 @@ void UsinaProcessor::applyStateTree(juce::ValueTree st)
             const auto cab = st.getChildWithName("CABINE");
             if (cab.isValid() && cabineModel != nullptr) cabineModel->fromTree(cab);
             st.removeChild(cab, nullptr);
+            // the PLAY view's (27/10; before: none, its defaults). Copied into the same tree: the view holds it
+            const auto play = st.getChildWithName("PLAY");
+            if (play.isValid()) playTree.copyPropertiesAndChildrenFrom(play, nullptr);
+            st.removeChild(play, nullptr);
             const juce::String irFile = st.getProperty("irFile").toString();   // (the IR's file; before: none)
             st.removeProperty("irFile", nullptr);
+            const juce::String sampleFile = st.getProperty("sampleFile").toString();   // (SAMPLE's; before: none)
+            st.removeProperty("sampleFile", nullptr);
+            if (sampleFile.isEmpty()) {
+                sampleClear();
+            } else if (sampleFile != samplePath) {      // (a file that moved or went: kept named, marked missing)
+                const bool ok = juce::File::isAbsolutePath(sampleFile) && sampleLoad(juce::File(sampleFile));
+                if (!ok) sampleClear();
+                samplePath = sampleFile;
+                sampleMissing = !ok;
+            }
             params.replaceState(st);
             if (irFile.isEmpty()) {
                 irClear();
