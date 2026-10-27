@@ -1,16 +1,16 @@
 {
   "name": "usinalab",
-  "version": "0.1.45-alpha.2",
+  "version": "0.1.45-alpha.3",
   "baseRevision": "0.1.45",
   "status": "published",
-  "sourceArchive": "usinalab-source-0.1.45-alpha.2.zip",
-  "sourceArchiveSha256": "03bbcf04875dda3cd6d0fdf07203c402652fd22bebea65d1bd3883c56dcb084d",
+  "sourceArchive": "usinalab-source-0.1.45-alpha.3.zip",
+  "sourceArchiveSha256": "5e716df91ccea10cf739c4acbc02a2f650469743eab700c0b68b20725f2e0827",
   "cleanBuild": "passed; playback and filter analyzer WASM/glue match validated 0.1.45 byte-for-byte",
   "files": {
     ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "algorithms.json": "f3d93f55bda1d8b29d8c89bcbbd7bb91ba48015505a7382ceb6d90af5f8dc084",
     "Apache-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "app.js": "f5770009ad0cc5fd055fed2e8af676a00d329b922a17461337dc20627ebbb79a",
+    "app.js": "6e7f117a99c21e858baa9c78c6f878f00e13d72c1339f26224588539d67d86c1",
     "cabine-actions.js": "5794c8979de2e41b2093aa1ab5d42fbed9e63418594718eb58e350c0154ad129",
     "cabine-gestures.js": "98eee21e3a9cfdd95e2d0dc7e65d4713a95248ad513571e27c4ab405298a14bf",
     "cabine-keys.js": "ea093090b04c16cac073c7087d952eea46cc9d71d123cc3e2ea044cf1c99376f",
@@ -22,7 +22,7 @@
     "CNAME": "4e23aee9af87ccd982cb4b656b6a7dbaf79d3cab200f56995d0adf593e2e92ea",
     "controller-panel.js": "e8d39df87efcddb40c59a76982099f891e77ae5b1f50100a0bee42437d44ec32",
     "controls.js": "68a5978cb697bae1ed8f8197ab3b5e6aca45cbf17ccb9346e6ba05bbe407f088",
-    "credits.js": "01bd09c5a4fd0fea6415d48b389470e4971f360c6b2832fb1508877071e1a5bb",
+    "credits.js": "046bcb0622fdcd462c944f79923de8ee83e3a2a375ed0093460cfc2212564e62",
     "envelope-link.js": "9cf2c4e2674e2003e1f255faf061435fc2d09597967e0608754307683c67db61",
     "factory-preset.js": "e5907be73f17b7fef8d48e8c5106ab54c0cbc3caff53ccb6d814b1cc4b481293",
     "filter-analyzer.mjs": "3d86d6928af26aae300f62cb53c4fb4bff41e1c1b0e1f5294fe48cecc3789f9c",
@@ -100,7 +100,7 @@
     "sequence-wire.js": "ef5cec1305a3fc2c9e5031c57a48f031552ecc5f102721935dd2b7b1be66b2ee",
     "sequence-worker.js": "49160db4912077dae9a2bfa45dcb3cec4f8bdec8450317f89420299938d21486",
     "sequence.css": "690d207645ce254826d89b3abba8f81a6dc6201f74e7bdd2dc95c8b9dcd27195",
-    "service-worker.js": "7e2848f30593e44003f7df2b731ab18f91d0296b7e199c4f1598a41285f3443d",
+    "service-worker.js": "5f2bc07f21b686d3279f43aba3ed84b85085912da28b41a561270615efd64129",
     "source-scope.js": "8d9dc6e885e7826ec7f55b235c83050cc776e95b286bd535db35dc5bb7149f92",
     "style.css": "25d76f79e6d6ed0c8ed93904f38c1d42649a45b492e89f726fc3ba5db3472d6f",
     "synth-layout.css": "40f41c335829e174fd3a50dcd5f6aa5f7572c7ae91e6633af82188cffa917252",
@@ -117,10 +117,10 @@
     "usina-android-source-0.1.45.zip": "4e003daafaa0729bdd5955e6f9f7cb3e2b24b0c8ce741fc1370bbb729a6f65e7",
     "usina.mjs": "adbf9fefd34bf4d792687372140a2ea40815c2f688f821631e8afa9088ea0ba0",
     "usina.wasm": "c020a55bf68a547e0bda611d3bff11b00b95af6d4af23cb4915526385462ecdb",
-    "usinalab-source-0.1.45-alpha.2.zip": "03bbcf04875dda3cd6d0fdf07203c402652fd22bebea65d1bd3883c56dcb084d",
+    "usinalab-source-0.1.45-alpha.3.zip": "5e716df91ccea10cf739c4acbc02a2f650469743eab700c0b68b20725f2e0827",
     "vertical-gesture.js": "433f2bacbcbe2cfb37f07470ac3a25ba38896389afe5dbf8eb147621ea06822e",
     "visual-sources.js": "a6e7b729c9edc658d1344915bdaa18cb0da50c522ac79600466ebf0495b3e13f",
-    "worklet.js": "a60cde22cc6b063f2fad5a292d673297c7d6318f9e3df8ca12c1ab6a1a05e403"
+    "worklet.js": "74c5ea0ab24799667e56044a96aa38fce9005eed745b6402273000f8e26a943f"
   },
   "sourceExclusions": [
     "personal FM patch bank resources_fm_banks.cc"
@@ -140,6 +140,7 @@
   "url": "https://usina.ruido.art.br/",
   "httpsEnforced": true,
   "changes": {
-    "0.1.45-alpha.2": "iOS/iPadOS audio session fix in app.js; service worker cache renamed; no DSP/WASM change"
+    "0.1.45-alpha.2": "iOS/iPadOS audio session fix in app.js; service worker cache renamed; no DSP/WASM change",
+    "0.1.45-alpha.3": "notas tocadas ao vivo sem carimbo de tempo (soam no próximo bloco: o atraso no iPad); medidor ?diag=1 (latências, bloco do sistema, toque→nota) em web/app.js e web/worklet.js. Sem mudança de DSP, WASM ou fontes nativas."
   }
 }

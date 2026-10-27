@@ -136,7 +136,11 @@ class UsinaProcessor extends AudioWorkletProcessor {
     }
     this.modVisuals.tick(n,(currentFrame+n)/sampleRate,sampleRate);
     if(this.scopeSource){this.scopeFrames+=n;if(this.scopeFrames>=sampleRate/30){this.scopeFrames%=sampleRate/30;if(!this.scopeBusy){this.scopeBusy=true;this.port.postMessage({type:'source',token:this.scopeToken,value:this.m._web_source(this.scopeSource),time:(currentFrame+n)/sampleRate});}}}
-    if (++this.ticks % 32 === 0) {for(let i=0;i<9;++i)this.cursors[i]=this.m._web_cursor(i);this.port.postMessage({ type: 'meter', voices: this.m._web_meter(0), reduction: this.m._web_meter(1), cursor: this.cursors[0], cursors:this.cursors });}
+    // the system's burst (for ?diag=1): the frames rendered back to back before a pause - the output buffer the OS uses
+    const wall = Date.now();
+    if (wall - (this.lastWall || 0) > 2) { if (this.burstAcc) this.burst = this.burstAcc; this.burstAcc = 0; }
+    this.burstAcc = (this.burstAcc || 0) + n; this.lastWall = wall;
+    if (++this.ticks % 32 === 0) {for(let i=0;i<9;++i)this.cursors[i]=this.m._web_cursor(i);this.port.postMessage({ type: 'meter', voices: this.m._web_meter(0), reduction: this.m._web_meter(1), cursor: this.cursors[0], cursors:this.cursors, burst: this.burst || 0 });}
     return true;
   }
 }

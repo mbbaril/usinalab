@@ -146,6 +146,7 @@ async function startAudio() {
         else if(data.type==='modSources'){modulationFeedback.receive(data);}
         else if(data.type==='source'){sourceScopes.receive(data);}
         else if (data.type === 'meter') {
+          if (diag && data.burst) diag.burst = data.burst;
           if(data.cursors)seqCursors=data.cursors;
           if(view==='cabine')$('view').refreshCabine?.();if(view==='sequence')$('view').refreshSequence?.();
           $('voices').textContent = `${String(data.voices).padStart(2, '0')} VOZES`;
@@ -363,9 +364,27 @@ function renderMidiMaps(root){
 }
 function renderSequence(root){sequencePanel.render(root);}
 
-function note(status, a, b, when = context?.currentTime) {
+// A note played now goes without a time: the worklet plays it at the next block it renders. Stamping it with this
+// page's context.currentTime made it wait whenever that clock ran ahead of the worklet's (27/10, iPad: Safari renders
+// in larger bursts; the dono: "atraso pra tocar"). Only a note given a time (the audition's release, MIDI with a
+// future timestamp) is scheduled.
+function note(status, a, b, when) {
   if (!audioReady) { message('Ative o áudio para tocar.'); return; }
-  send({ type: 'midi', status, a, b, frame: Math.round(Math.max(context.currentTime, when || 0) * context.sampleRate) });
+  if (diag && (status & 0xf0) === 0x90 && b > 0 && performance.now() - diag.down < 1000) diag.touch = performance.now() - diag.down;
+  send({ type: 'midi', status, a, b, frame: when === undefined ? undefined : Math.round(Math.max(context.currentTime, when) * context.sampleRate) });
+}
+// ?diag=1: a strip with the audio path's numbers (the device's report, the iOS burst, touch -> note), nothing else
+const diag = new URLSearchParams(location.search).has('diag') ? { down: -1e9, touch: NaN, burst: 0 } : null;
+if (diag) {
+  addEventListener('pointerdown', e => { diag.down = e.timeStamp || performance.now(); }, true);
+  const strip = document.createElement('div');
+  strip.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:9999;padding:4px 8px;background:#000c;color:#c2f000;font:11px monospace;pointer-events:none;border:1px solid #c2f000';
+  document.body.append(strip);
+  setInterval(() => {
+    const ms = v => Number.isFinite(v) ? (v * 1000).toFixed(1) + ' ms' : 'n/d';
+    strip.textContent = context ? `${context.sampleRate} Hz  ${$('quality').value}x  base ${ms(context.baseLatency)}  saída ${ms(context.outputLatency)}  ` +
+      `bloco iOS ${diag.burst} (${ms(diag.burst / context.sampleRate)})  toque→nota ${Number.isFinite(diag.touch) ? diag.touch.toFixed(1) + ' ms' : '—'}  ${context.state}` : 'diag: ative o áudio';
+  }, 500);
 }
 
 function releaseAll() { cancelEditorGestures();sequencePanel.resetInput(); cabineActionMidi.cancel(); $('view').cancelGestures?.();send({ type: 'panic' }); performanceControls.reset(); state.controllerBindings.forEach((binding, index) => { if (binding?.kind === 'note') send({ type: 'control', index, value: 0 }); }); localKeyboard.stop(); }
@@ -399,7 +418,7 @@ function handleMidi({ status, a, b, timestamp = performance.now() }) {
     if (binding.kind === 'note' && (kind === 0x80 || kind === 0x90)) { send({ type: 'control', index, value: kind === 0x90 ? b / 127 : 0 }); consumed = true; }
   });
   if(!consumed&&audioReady){const packet=sequencePanel.midi(status,a,b,view==='sequence','input');if(!packet)consumed=true;else{status=packet[0];a=packet[1];b=packet[2];}}
-  if (!consumed&&audioReady) { const when = context ? context.currentTime + Math.max(0, (timestamp - performance.now()) / 1000) : 0; note(status, a, b, when); }
+  if (!consumed&&audioReady) { const ahead = (timestamp - performance.now()) / 1000; note(status, a, b, ahead > .001 ? context.currentTime + ahead : undefined); }   // (now: no time - see note())
 }
 $('midi').onclick = async () => {
   try {
