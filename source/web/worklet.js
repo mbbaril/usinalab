@@ -119,8 +119,9 @@ class UsinaProcessor extends AudioWorkletProcessor {
   views(){const m=this.m;this.input=[0,1].map(c=>new Float32Array(m.HEAPF32.buffer,m._web_input(c),128));this.output=[0,1].map(c=>new Float32Array(m.HEAPF32.buffer,m._web_output(c),128));
     this.functionBuffer=new Float32Array(m.HEAPF32.buffer,m._web_function_buffer(),64*3);this.chordBuffer=new Int32Array(m.HEAPF32.buffer,m._web_chord_buffer(),16);this.durationBuffer=new Float32Array(m.HEAPF32.buffer,m._web_duration_buffer(),16);}
   // the capture ended (by hand or full): played from now, and given to the page (to keep it, to draw it)
-  finishCapture(){const c=this.capture;this.capture=null;if(!c||this.capturePos<sampleRate*0.01)return;const samples=c.slice(0,this.capturePos);
-    this.port.postMessage({type:'captured',samples,rate:sampleRate},[samples.buffer]);}
+  // (always an answer: nothing - under 10 ms, no input - says so; the page never waits on a capture that took nothing)
+  finishCapture(){const c=this.capture;this.capture=null;if(!c||this.capturePos<sampleRate*0.01){this.port.postMessage({type:'captured',samples:null,rate:sampleRate});return;}
+    const samples=c.slice(0,this.capturePos);this.port.postMessage({type:'captured',samples,rate:sampleRate},[samples.buffer]);}
   captureBlock(inp){if(!this.capture||!inp?.length)return;const a=inp[0],b=inp[1]||a,n=Math.min(a.length,this.capture.length-this.capturePos);
     for(let i=0;i<n;++i)this.capture[this.capturePos+i]=0.5*(a[i]+b[i]);this.capturePos+=n;if(this.capturePos>=this.capture.length)this.finishCapture();}
   process(inputs, outputs) {

@@ -1,15 +1,15 @@
 {
   "name": "usinalab",
-  "version": "0.1.47-alpha.4",
+  "version": "0.1.47-alpha.5",
   "baseRevision": "0.1.45",
   "status": "published",
-  "sourceArchive": "usinalab-source-0.1.47-alpha.4.zip",
-  "sourceArchiveSha256": "0902792068ecd08acefafea5d08ed1d53fb0be3b6a8fd82a5fab846c891f0447",
+  "sourceArchive": "usinalab-source-0.1.47-alpha.5.zip",
+  "sourceArchiveSha256": "9e9b396058a90e61eb90e4e82100e68865b30bfc908282511c6196bc0b9da9ae",
   "cleanBuild": "passed; playback and filter analyzer WASM/glue match validated 0.1.45 byte-for-byte",
   "files": {
     "algorithms.json": "ffded73f0e5fb9d922799d0bf9e46574ebf3ca922a8076e5866075416a0ac6e2",
     "Apache-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "app.js": "884432925c9ed13ef2f0cb57e9f8ff3c3d36c89cff77dc18529853106b3c7080",
+    "app.js": "3f53964f86bb4fcc4685d0c515c1fc99953704b87027a512eb73245a10262640",
     "cabine-actions.js": "5794c8979de2e41b2093aa1ab5d42fbed9e63418594718eb58e350c0154ad129",
     "cabine-gestures.js": "98eee21e3a9cfdd95e2d0dc7e65d4713a95248ad513571e27c4ab405298a14bf",
     "cabine-keys.js": "ea093090b04c16cac073c7087d952eea46cc9d71d123cc3e2ea044cf1c99376f",
@@ -23,7 +23,7 @@
     "CNAME": "4e23aee9af87ccd982cb4b656b6a7dbaf79d3cab200f56995d0adf593e2e92ea",
     "controller-panel.js": "e8d39df87efcddb40c59a76982099f891e77ae5b1f50100a0bee42437d44ec32",
     "controls.js": "fbee82e0531d9009db2e4727b85d6cc639ada097c4c7e87ebea9be8012c01487",
-    "credits.js": "e7d661cbe99da291afe400b215f27f2438de11d4245b43dacf146fad7373a791",
+    "credits.js": "98aa8b6edc00e9db797d0f5892e9e519bfe9cca4ac5a1d4505ee52e7c52dfaf8",
     "envelope-link.js": "9cf2c4e2674e2003e1f255faf061435fc2d09597967e0608754307683c67db61",
     "factory-preset.js": "e5907be73f17b7fef8d48e8c5106ab54c0cbc3caff53ccb6d814b1cc4b481293",
     "filter-analyzer.mjs": "3d86d6928af26aae300f62cb53c4fb4bff41e1c1b0e1f5294fe48cecc3789f9c",
@@ -100,7 +100,7 @@
     "roll-notes.js": "2f9ae7c1673043bf1b0365fbf43d0a5f986d4d3d5189c56332e2aadcfcb5677f",
     "route-list.js": "4eec5ab648e29dddc97b701af5aef5a8537d8fc5c6b21e926ceb01d86d423585",
     "sample-panel.css": "9517fa3c12c691206eafd5af669772e6e9720aad711b87918bca1b78e6a371b0",
-    "sample-panel.js": "60071e29aebd09dd38c2f98fd3dbfbc06da898eb96574115b5e94bcf7be7b588",
+    "sample-panel.js": "42cd65f6e643659cf5d09bc88c27492ec62ec7a9495daffc12ba93333772dd70",
     "scope-viewport.js": "1fef1d85f18854971a6a7033f37678957a31d98991a5493767d1a764af31917f",
     "sequence-generator.js": "108956c4eca49b12db58a68dd9b63214b30266858f79fb4fd3abe7ef84496100",
     "sequence-harmony.js": "d67a13278402c25ec007eb670bbae14ed4689a96843b2290fe26a5c3be781a19",
@@ -109,7 +109,7 @@
     "sequence-wire.js": "ef5cec1305a3fc2c9e5031c57a48f031552ecc5f102721935dd2b7b1be66b2ee",
     "sequence-worker.js": "49160db4912077dae9a2bfa45dcb3cec4f8bdec8450317f89420299938d21486",
     "sequence.css": "690d207645ce254826d89b3abba8f81a6dc6201f74e7bdd2dc95c8b9dcd27195",
-    "service-worker.js": "3bd9da62ac05fdea6cc22c8840e557f1565c235a4444c68f309770042f485649",
+    "service-worker.js": "6e89449c9380b61cdff491069dc49a0248fa917525e4e0ae7fb3cd01a015971b",
     "source-scope.js": "8d9dc6e885e7826ec7f55b235c83050cc776e95b286bd535db35dc5bb7149f92",
     "style.css": "25d76f79e6d6ed0c8ed93904f38c1d42649a45b492e89f726fc3ba5db3472d6f",
     "synth-layout.css": "40f41c335829e174fd3a50dcd5f6aa5f7572c7ae91e6633af82188cffa917252",
@@ -126,10 +126,10 @@
     "usina-android-source-0.1.45.zip": "4e003daafaa0729bdd5955e6f9f7cb3e2b24b0c8ce741fc1370bbb729a6f65e7",
     "usina.mjs": "a91e3c4d257fefd14f9903132817bf560f507da9c3fe08d7005ac39701452f9a",
     "usina.wasm": "c3e12d54186f69302cd6f028f6fd614ca3f4b51cb7ae516d2861cff47f3d4da4",
-    "usinalab-source-0.1.47-alpha.4.zip": "0902792068ecd08acefafea5d08ed1d53fb0be3b6a8fd82a5fab846c891f0447",
+    "usinalab-source-0.1.47-alpha.5.zip": "9e9b396058a90e61eb90e4e82100e68865b30bfc908282511c6196bc0b9da9ae",
     "vertical-gesture.js": "433f2bacbcbe2cfb37f07470ac3a25ba38896389afe5dbf8eb147621ea06822e",
     "visual-sources.js": "a6e7b729c9edc658d1344915bdaa18cb0da50c522ac79600466ebf0495b3e13f",
-    "worklet.js": "559425f81217f91f4c791feaa106eca933c167d3444a50eb5335de31fb171b14"
+    "worklet.js": "45d311798e343e37feedd749afc3aefa0881540946273b5e82516762cccab2cd"
   },
   "sourceExclusions": [
     "personal FM patch bank resources_fm_banks.cc"
@@ -151,6 +151,7 @@
   "changes": {
     "0.1.45-alpha.2": "iOS/iPadOS audio session fix in app.js; service worker cache renamed; no DSP/WASM change",
     "0.1.45-alpha.3": "notas tocadas ao vivo sem carimbo de tempo (soam no próximo bloco: o atraso no iPad); medidor ?diag=1 (latências, bloco do sistema, toque→nota) em web/app.js e web/worklet.js. Sem mudança de DSP, WASM ou fontes nativas.",
-    "0.1.47-alpha.4": "aba PLAY (teclas grandes, macros, instantâneos, XY; ESTE APP / SAÍDA MIDI com MPE); operador SAMPLE (uma gravação como operador: carregar, capturar a entrada); motor 0.1.47 (A/B dos presets inalterado)"
+    "0.1.47-alpha.4": "aba PLAY (teclas grandes, macros, instantâneos, XY; ESTE APP / SAÍDA MIDI com MPE); operador SAMPLE (uma gravação como operador: carregar, capturar a entrada); motor 0.1.47 (A/B dos presets inalterado)",
+    "0.1.47-alpha.5": "SAMPLE: o PARAR da captura funciona; o CAPTURAR liga a entrada de áudio sozinho"
   }
 }

@@ -7,7 +7,7 @@ const DB='usina-sample',STORE='recording';
 function idb(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});}
 async function keep(rec){try{const db=await idb();await new Promise((ok,no)=>{const t=db.transaction(STORE,'readwrite');rec?t.objectStore(STORE).put(rec,'current'):t.objectStore(STORE).delete('current');t.oncomplete=ok;t.onerror=()=>no(t.error);});}catch{}}
 async function kept(){try{const db=await idb();return await new Promise(ok=>{const r=db.transaction(STORE).objectStore(STORE).get('current');r.onsuccess=()=>ok(r.result||null);r.onerror=()=>ok(null);});}catch{return null;}}
-export function createSamplePanel({el,send,status,param,context}){
+export function createSamplePanel({el,send,status,param,context,ensureInput=async()=>true}){
   let rec=null,capturing=false,captureStart=0,canvas=null,label=null,capButton=null,timer=0,prefix='op1_';
   const ready=kept().then(r=>{if(r?.samples instanceof Float32Array)rec=r;return rec;});
   function give(){if(rec)send({type:'sample',samples:rec.samples.slice(),rate:rec.rate});else send({type:'sample'});}
@@ -19,7 +19,11 @@ export function createSamplePanel({el,send,status,param,context}){
       take({samples:mono,rate:audio.sampleRate},file.name.replace(/\.[^.]+$/,''));status(`SAMPLE: ${file.name} (${(n/audio.sampleRate).toFixed(2)} s)`);}
     catch{status(`${file.name} não pôde ser lido como áudio.`,true);}
   }
-  function captured(data){capturing=false;clearInterval(timer);if(data?.samples)take({samples:data.samples,rate:data.rate},`CAPTURA ${new Date().toLocaleTimeString()}`);paint();}
+  // the worklet's answer to a stop (always one, 27/10: an empty capture used to leave the page waiting forever)
+  function captured(data){capturing=false;clearInterval(timer);
+    if(data?.samples){take({samples:data.samples,rate:data.rate},`CAPTURA ${new Date().toLocaleTimeString()}`);status(`SAMPLE: captura de ${(data.samples.length/data.rate).toFixed(2)} s.`);}
+    else status('Nada foi gravado: a entrada de áudio não trouxe som (o microfone está liberado para o site?).',true);paint();}
+  function stopCapture(){if(!capturing)return;capturing=false;clearInterval(timer);send({type:'capture',on:false});paint();}
   function paint(){
     if(capButton){capButton.textContent=capturing?`PARAR ${((performance.now()-captureStart)/1000).toFixed(1)} s`:'CAPTURAR';capButton.setAttribute('aria-pressed',String(capturing));}
     if(label)label.textContent=capturing?'gravando a entrada...':rec?`${rec.name||'gravação'}  ${(rec.samples.length/rec.rate).toFixed(2)} s`:'sem gravação';
@@ -37,7 +41,11 @@ export function createSamplePanel({el,send,status,param,context}){
     capButton=el('button','small-button','CAPTURAR');file.type='file';file.accept='audio/*';file.hidden=true;
     loadB.title='Uma gravação (WAV, MP3, OGG...: mono, até 30 s) para os operadores SAMPLE';capButton.title='Grava a entrada de áudio (até 20 s); toque de novo para parar. Fica guardada neste aparelho.';
     loadB.onclick=()=>file.click();file.onchange=()=>{if(file.files[0])load(file.files[0]);file.value='';};
-    capButton.onclick=()=>{if(capturing){send({type:'capture',on:false});return;}capturing=true;captureStart=performance.now();send({type:'capture',on:true});timer=setInterval(paint,200);paint();status('CAPTURAR: a entrada de áudio precisa estar ligada (I/O → entrada).');};
+    // CAPTURAR turns the audio input on first when it is off (the touch itself allows the microphone); PARAR
+    // ends at once on the page - the recording comes after, by the worklet's answer
+    capButton.onclick=async()=>{if(capturing){stopCapture();return;}
+      if(!(await ensureInput())){status('CAPTURAR: não foi possível ligar a entrada de áudio (o microfone foi negado?).',true);return;}
+      capturing=true;captureStart=performance.now();send({type:'capture',on:true});clearInterval(timer);timer=setInterval(paint,200);paint();status('Gravando a entrada de áudio: toque PARAR para terminar (até 20 s).');};
     clearB.onclick=()=>{take(null);status('SAMPLE: sem gravação.');};
     row.append(loadB,capButton,clearB,file);label=el('div','sample-name');canvas=el('canvas','sample-wave');canvas.width=360;canvas.height=64;
     box.append(row,label,canvas);root.append(box);paint();

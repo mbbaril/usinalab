@@ -1,8 +1,8 @@
 {
-  "version": "0.1.47-alpha.4",
+  "version": "0.1.47-alpha.5",
   "files": {
     "build-web/parity/fx-processor-ui.tsv": "f434e35a95dd61d4735e801c64558a2f648c86288016af6f92033bdb37c196ca",
-    "BUILD.md": "9cf95dbdc36c6fd8ca890b19fd39df199d241e5745afebefa85f74565f7eef7f",
+    "BUILD.md": "67023ec5b3d40945a478eae5a3f1c929d196d23c6be908ee04a9ffb05e0c1246",
     "libs/RuidoCore/CMakeLists.txt": "90fecdf44bf6f294e70eb8cb272276000c22bf73ccd232a39e63bf46e56bd3b7",
     "libs/RuidoCore/include/ruidocore/Core/Event.h": "d17ee8e82cd0de8c8159cc9df34ce36f951e93223b05abed1f77c002357baa11",
     "libs/RuidoCore/include/ruidocore/Core/Mod.h": "1609ae06982beb8e463738bc6d1b6921dec41127c75daaca3435b36902d0f8d4",
@@ -328,7 +328,7 @@
     "tests/SeqTest.cpp": "c46277603746d1ab3ca08e278b8ed95cab92f7af781cd4cf6371c0a70cc4b0fd",
     "web/algorithms.json": "ffded73f0e5fb9d922799d0bf9e46574ebf3ca922a8076e5866075416a0ac6e2",
     "web/Apache-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "web/app.js": "884432925c9ed13ef2f0cb57e9f8ff3c3d36c89cff77dc18529853106b3c7080",
+    "web/app.js": "3f53964f86bb4fcc4685d0c515c1fc99953704b87027a512eb73245a10262640",
     "web/bindings.cpp": "eaf5f2220f330e02ae73176f7f44b164101cc9cd6719ae5bfb28f19f86bd69d9",
     "web/build.sh": "11994c44b2733754c7f80fc5985ad041d961ea4c5ff16b2488b642e9155f830e",
     "web/cabine-actions.js": "5794c8979de2e41b2093aa1ab5d42fbed9e63418594718eb58e350c0154ad129",
@@ -344,7 +344,7 @@
     "web/CMakeLists.txt": "bd6fa42e445fd4fe835d0f49ad2adaabeb666ba3fa20e19e6d7ad82e2f91ce23",
     "web/controller-panel.js": "e8d39df87efcddb40c59a76982099f891e77ae5b1f50100a0bee42437d44ec32",
     "web/controls.js": "fbee82e0531d9009db2e4727b85d6cc639ada097c4c7e87ebea9be8012c01487",
-    "web/credits.js": "e7d661cbe99da291afe400b215f27f2438de11d4245b43dacf146fad7373a791",
+    "web/credits.js": "98aa8b6edc00e9db797d0f5892e9e519bfe9cca4ac5a1d4505ee52e7c52dfaf8",
     "web/engine.cpp": "09a843d78ad47caf97de95137b14d0e6d6e601cfc34e305d6791e8efa16be2ce",
     "web/engine.h": "7d4aa5100f2fcef8e6c2273197ec24f7fff39219ac8d8839762a729c6ac44e54",
     "web/envelope-link.js": "9cf2c4e2674e2003e1f255faf061435fc2d09597967e0608754307683c67db61",
@@ -425,7 +425,7 @@
     "web/route-list.js": "4eec5ab648e29dddc97b701af5aef5a8537d8fc5c6b21e926ceb01d86d423585",
     "web/runtime-test.cpp": "e285d7ba4ae1b1144412fed85b4eb8dc269c1b092d7d65fcbf17a17a14993145",
     "web/sample-panel.css": "9517fa3c12c691206eafd5af669772e6e9720aad711b87918bca1b78e6a371b0",
-    "web/sample-panel.js": "60071e29aebd09dd38c2f98fd3dbfbc06da898eb96574115b5e94bcf7be7b588",
+    "web/sample-panel.js": "42cd65f6e643659cf5d09bc88c27492ec62ec7a9495daffc12ba93333772dd70",
     "web/scope-viewport.js": "1fef1d85f18854971a6a7033f37678957a31d98991a5493767d1a764af31917f",
     "web/sequence-generator.js": "108956c4eca49b12db58a68dd9b63214b30266858f79fb4fd3abe7ef84496100",
     "web/sequence-harmony.js": "d67a13278402c25ec007eb670bbae14ed4689a96843b2290fe26a5c3be781a19",
@@ -452,6 +452,6 @@
     "web/typing-keyboard.js": "d42087b1518bffc3f37cba99eb4a36f9f33381d1ab5c227d1aa8ec82f22f89ae",
     "web/vertical-gesture.js": "433f2bacbcbe2cfb37f07470ac3a25ba38896389afe5dbf8eb147621ea06822e",
     "web/visual-sources.js": "a6e7b729c9edc658d1344915bdaa18cb0da50c522ac79600466ebf0495b3e13f",
-    "web/worklet.js": "559425f81217f91f4c791feaa106eca933c167d3444a50eb5335de31fb171b14"
+    "web/worklet.js": "45d311798e343e37feedd749afc3aefa0881540946273b5e82516762cccab2cd"
   }
 }
