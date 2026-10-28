@@ -41,11 +41,14 @@ if (window.Capacitor?.isNativePlatform()) document.documentElement.classList.add
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const shell=installInstrumentShell({el}),pickup=new MidiPickup();
 const categories = Object.fromEntries(presetCategories);
-const modes = ['FM', 'RING', 'FILTER', 'FILTER FM', 'FOLD', 'EFFECT', 'BYPASS', 'MUTE', 'MODAL', 'CHAOS', 'STOCHASTIC', 'MACRO', 'SAMPLE'];
+const modes = ['FM', 'RING', 'FILTER', 'FILTER FM', 'FOLD', 'EFFECT', 'BYPASS', 'MUTE', 'MODAL', 'CHAOS', 'STOCHASTIC', 'MACRO', 'SAMPLE', 'UNISON'];
 const effects = ['NONE', 'TEXTURE', 'ROOM', 'DISTORT', 'IR · pendente', 'VAPOR', 'DELAY'];
 const fxSlots = ['fx_a', 'fx_b', 'aux', 'loop'].flatMap(bus => ['', '2', '3'].map(slot => `${bus}${slot}_type`));
 const state = { params: {}, routes: [], sequence: Array.from({ length: 9 }, (_, lane) => Array.from({ length: 64 }, () => ({ on: false, inherit: true, note: lane >= 5 ? [36, 41, 48, 55][lane - 5] : 60, velocity: lane > 0 && lane < 5 ? 64 : 100, probability: 1, ratchet: 1, gate: .5 }))), lanes: Array.from({ length: 9 }, () => ({ length: 16, direction: 0, mul: 1, div: 1, mute: false })), resolution: 4, swing: 0, preset: 'CORDA FM' };
 let context, node, analyser, meta, algorithmData, descriptors = [], seqCursors = Array(9).fill(-1), byId = new Map(), byName = new Map(), library = [], view = 'operators', lane = 0, midi, inputStream, inputNode, pendingParams = new Map(), flushQueued = false, audioReady = false;
+// the engine hears a value at once; the screen catches up once a frame (28/10, the iPad: a knob or a CC used to wait for
+// the frame, and every CC redrew the MIDI addresses of the whole page). lastSyncMs: the frame's resync, for ?diag=1
+let paramsUi = false, addressesQueued = false, lastSyncMs = NaN;
 let nativeInput = false, preferNativeAudio = true;
 function audioBackendPreference(){try{return localStorage.getItem('usina.audio-backend')||'auto';}catch{return'auto';}}
 let selectedPreset, selectedStep = 0, learnParameter = null, learnControl = -1, selectedSource = null, directLearn = false, layoutPending = false, sourcesExpanded = false;
@@ -113,9 +116,12 @@ function setParam(id, value, immediate = false, origin = 'ui') {
   }
   const operatorType=id.match(/^(op\d)_(mode|a)$/);
   if (operatorType&&(operatorType[2]==='mode'||[2,3,5,8,9,10,11].includes(param(`${operatorType[1]}_mode`))) || /^rand\d_type$/.test(id) || ['algo','vap_mode','dist_mode','filter_type','filter'].includes(id)) layoutPending = true;
+  sendParamsNow();
   if (immediate) flush(); else if (!flushQueued) { flushQueued = true; requestAnimationFrame(flush); }
 }
-function flush() { flushQueued = false; modPanel.syncEnvelope(); if (pendingParams.size) { send({ type: 'params', values: [...pendingParams] }); pendingParams.clear(); if (layoutPending) { layoutPending = false; renderView(); } else document.querySelectorAll('[data-param],[data-readback]').forEach(n => n.sync?.());localKeyboard.sync();if(view==='cabine')$('view').refreshCabine?.(); } }
+function sendParamsNow() { if (pendingParams.size) { send({ type: 'params', values: [...pendingParams] }); pendingParams.clear(); paramsUi = true; } }
+function flush() { flushQueued = false; modPanel.syncEnvelope(); sendParamsNow(); if (paramsUi) { paramsUi = false; const t0 = performance.now(); if (layoutPending) { layoutPending = false; renderView(); } else document.querySelectorAll('[data-param],[data-readback]').forEach(n => n.sync?.());localKeyboard.sync();if(view==='cabine')$('view').refreshCabine?.(); lastSyncMs = performance.now() - t0; } }
+function scheduleAddresses() { if (!addressesQueued) { addressesQueued = true; requestAnimationFrame(() => { addressesQueued = false; refreshAddresses(); }); } }
 function sendState() {
   modPanel.syncEnvelope();
   send({ type: 'patch', values: descriptors.map(d => [d.index, param(d.id)]) });
@@ -456,13 +462,13 @@ function renderSequence(root){sequencePanel.render(root);}
 // future timestamp) is scheduled.
 function note(status, a, b, when) {
   if (!audioReady || context?.state!=='running') { message('Ative o áudio para tocar.'); return; }
-  if (diag && (status & 0xf0) === 0x90 && b > 0 && performance.now() - diag.down < 1000) diag.touch = performance.now() - diag.down;
+  if (diag && (status & 0xf0) === 0x90 && b > 0 && performance.now() - diag.down < 1000) { diag.touch = performance.now() - diag.down; diag.app = performance.now() - diag.entry; }
   send({ type: 'midi', status, a, b, frame: when === undefined ? undefined : Math.round(Math.max(context.currentTime, when) * context.sampleRate) });
 }
 // ?diag=1: a strip with the audio path's numbers (the device's report, the iOS burst, touch -> note), nothing else
-const diag = new URLSearchParams(location.search).has('diag') ? { down: -1e9, touch: NaN, burst: 0 } : null;
+const diag = new URLSearchParams(location.search).has('diag') ? { down: -1e9, entry: -1e9, touch: NaN, app: NaN, burst: 0 } : null;
 if (diag) {
-  addEventListener('pointerdown', e => { diag.down = e.timeStamp || performance.now(); }, true);
+  addEventListener('pointerdown', e => { diag.entry = performance.now(); diag.down = e.timeStamp || diag.entry; }, true);
   const strip = document.createElement('div');
   strip.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:9999;padding:4px 8px;background:#000c;color:#c2f000;font:11px monospace;pointer-events:none;border:1px solid #c2f000';
   document.body.append(strip);
@@ -478,7 +484,7 @@ if (diag) {
       return;
     }
     strip.textContent = context ? `${context.sampleRate} Hz  ${$('quality').value}x  base ${ms(context.baseLatency)}  saída ${ms(context.outputLatency)}  ` +
-      `bloco iOS ${diag.burst} (${ms(diag.burst / context.sampleRate)})  toque→nota ${Number.isFinite(diag.touch) ? diag.touch.toFixed(1) + ' ms' : '—'}  ${context.state}` : 'diag: ative o áudio';
+      `bloco iOS ${diag.burst} (${ms(diag.burst / context.sampleRate)})  toque→nota ${Number.isFinite(diag.touch) ? diag.touch.toFixed(1) + ' ms' : '—'} (app ${Number.isFinite(diag.app) ? diag.app.toFixed(1) + ' ms' : '—'})  tela ${Number.isFinite(lastSyncMs) ? lastSyncMs.toFixed(1) + ' ms' : '—'}  ${context.state}` : 'diag: ative o áudio';
   }, 500);
 }
 
@@ -506,7 +512,7 @@ function handleMidi({ status, a, b, timestamp = performance.now() }) {
   }
   if (learnControl >= 0 && (kind === 0xb0 || kind === 0x90 && b > 0)) { state.controllerBindings[learnControl] = { kind: kind === 0xb0 ? 'cc' : 'note', number: a, channel }; persistMappings();message(`CTRL ${learnControl + 1} aprendido.`); learnControl = -1;renderAddressBar();refreshAddresses(); }
   if (kind === 0xb0) for (const map of state.ccMaps) if (map.cc === a && (map.channel===-1||map.channel === channel)) { const d = byId.get(map.param); if (d){const current=Math.pow((param(d.id)-d.min)/(d.max-d.min),d.skew||1),next=pickup.next(map,b/127,current);if(next!==null){setParam(d.id,d.min+(d.max-d.min)*Math.pow(next,1/(d.skew||1)),false,'midi');pickup.applied(map,Math.pow((param(d.id)-d.min)/(d.max-d.min),d.skew||1));}} } 
-  if(kind===0xb0)refreshAddresses();
+  if(kind===0xb0)scheduleAddresses();
   let consumed = cabineActionMidi.handle({status,a,b,timestamp});
   state.controllerBindings.forEach((binding, index) => {
     if (!binding || binding.number !== a || binding.channel!==-1&&binding.channel !== channel) return;
@@ -634,5 +640,5 @@ if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform() && !lo
   navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
 // what is new (once a device, a release): said on the status line until the audio starts
-{const NEWS={id:'2026-10-27',text:'Novo nesta alfa: a aba PLAY (teclas grandes, macros, instantâneos e XY) e o operador SAMPLE (MODE → SAMPLE: uma gravação como operador). Alfa: pode mudar.'};
+{const NEWS={id:'2026-10-28',text:'Novo nesta alfa: o modo UNISON (MODE → UNISON: pilhas de ondas desafinadas, com SUB e PWM), o MODAL com DAMP e a excitação DROP (o objeto cai e quica), e o toque nas teclas mais rápido. Alfa: pode mudar.'};
   try{if(localStorage.getItem('usina.news')!==NEWS.id){localStorage.setItem('usina.news',NEWS.id);message(NEWS.text);}}catch{}}

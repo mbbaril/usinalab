@@ -12,6 +12,7 @@
 #include "FmFilters.h"
 #include "FmMod.h"
 #include "FmModal.h"
+#include "FmUnison.h"
 #include "FmModSources.h"
 #include "FmPatch.h"
 #include <atomic>
@@ -132,6 +133,7 @@ private:
         double eg = 0.0, deg = 0.0, egEnd = 0.0; // MODAL: the envelope on the excitation (its ramp, as g's)
         double strikeVel = -1.0;                 // MODAL: a note's strike, struck at its first control block (0..1)
         SamplePlay sp;                           // SAMPLE: where this voice reads the recording
+        UnisonState uni;                         // UNISON: the side copies' phases and drifts (FmUnison.h)
     };
     struct Voice {
         bool active = false, gate = false;

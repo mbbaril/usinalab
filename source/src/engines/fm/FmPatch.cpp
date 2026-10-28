@@ -110,6 +110,11 @@ Patch Patch::fromArray(const int* v)
     p.lpgDecay = std::clamp(x(XV_LPGDECAY), 0, 100);
     p.lpgColor = std::clamp(x(XV_LPGCOLOR), 0, 100);
     for (int k = 0; k < 6; ++k) p.op[(size_t)k].rateKey = std::clamp(x(XV_O1RATEKEY + k), 0, 100);
+    for (int k = 0; k < 6; ++k) p.op[(size_t)k].damp = std::clamp(x(XV_O1DAMP + k), 0, 100);
+    for (int k = 0; k < 6; ++k) {
+        p.op[(size_t)k].sub = std::clamp(x(XV_O1SUB + k), 0, 100);
+        p.op[(size_t)k].pwm = std::clamp(x(XV_O1PWM + k), 0, 100);
+    }
     for (int k = 0; k < 6; ++k) {                        // the operators' MODAL values
         auto& o = p.op[(size_t)k];
         const auto m = [&](int x) { return get(modalIndex(k, x)); };

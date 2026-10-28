@@ -325,6 +325,31 @@ void GranularProcessor::Process(
     fb_filter_[1].set(fb_filter_[0]);
     fb_filter_[0].Process<FILTER_MODE_HIGH_PASS>(&fb_[0].l, &fb_[0].l, size, 2);
     fb_filter_[1].Process<FILTER_MODE_HIGH_PASS>(&fb_[0].r, &fb_[0].r, size, 2);
+    // (USINA LIMIT, 28/10: the fed-back signal held within a ceiling set by the wrapper - fx/Vapor.cpp: the
+    // input's held power, +6 dB. Dense grains with feedback grew 25 dB without it. 0: off, the module as it is)
+    if (parameters_.usina_fb_ceiling > 0.0f) {
+      float power = 0.0f;
+      for (size_t i = 0; i < size; ++i) {
+        power += 0.5f * (fb_[i].l * fb_[i].l + fb_[i].r * fb_[i].r);
+      }
+      power /= static_cast<float>(size);
+      float target = power > parameters_.usina_fb_ceiling
+          ? 1.0f - sqrtf(parameters_.usina_fb_ceiling / power) : 0.0f;
+      float from = usina_fb_atten_;
+      usina_fb_atten_ += (target - usina_fb_atten_) * (target > usina_fb_atten_ ? 0.6f : 0.02f);
+      if (target == 0.0f && usina_fb_atten_ < 1.0e-5f) usina_fb_atten_ = 0.0f;
+      if (from != 0.0f || usina_fb_atten_ != 0.0f) {
+        float step = (usina_fb_atten_ - from) / static_cast<float>(size);
+        float a = from;
+        for (size_t i = 0; i < size; ++i) {
+          a += step;
+          fb_[i].l *= 1.0f - a;
+          fb_[i].r *= 1.0f - a;
+        }
+      }
+    } else {
+      usina_fb_atten_ = 0.0f;
+    }
     float fb_gain = feedback * (2.0f - feedback) * (1.0f - freeze_lp_);
     for (size_t i = 0; i < size; ++i) {
       in_[i].l += fb_gain * (

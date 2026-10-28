@@ -62,6 +62,8 @@ export function parseVstSound(text, metadata, Parser = globalThis.DOMParser) {
           if (points.length < 2 || points.length > 64 || points.some((p, i) => p.length !== 3 || p.some(v => !Number.isFinite(v)) || p[0] < 0 || p[0] > 1 || p[1] < 0 || p[1] > 1 || Math.abs(p[2]) > 1 || i > 0 && p[0] < points[i - 1][0])) { blocked(`Curva inválida em FUNC ${index + 1}.`); return; }
           plan.functions[index] = points;
         });
+      } else if (child.tagName === 'PLAY') {
+        // (the plugin's presets saved 27..28/10 carried the PLAY view: the player's surface, not the sound - ignored)
       } else blocked(`Seção de som não suportada: ${child.tagName.slice(0, 80)}.`);
     }
   }

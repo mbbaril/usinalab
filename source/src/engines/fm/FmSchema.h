@@ -45,7 +45,13 @@ enum ExtValue { XV_ENV1ATK, XV_ENV1DEC, XV_ENV1SUS, XV_ENV1REL, XV_ENV1CRV,
                 XV_LPGMODE = XV_F1SYNC + 12, XV_LPGDECAY, XV_LPGCOLOR,
                 // operator k's RATE KEY (22/10, the chips' key scale rate): 0..100 %, its envelope's times by the note
                 XV_O1RATEKEY = XV_LPGMODE + 3,
-                kExtValues = XV_O1RATEKEY + 6 };
+                // operator k's MODAL DAMP (28/10, the festival's sprint): 0..100, a hand on the object when the key is
+                // let go (FmModal.h)
+                XV_O1DAMP = XV_O1RATEKEY + 6,
+                // operator k's UNISON SUB and PWM (28/10): 0..100 - a square an octave below; the squares' widths
+                // moving, each copy at its own pace (FmUnison.h)
+                XV_O1SUB = XV_O1DAMP + 6, XV_O1PWM = XV_O1SUB + 6,
+                kExtValues = XV_O1PWM + 6 };
 constexpr int kFuncValues = 5, kRandValues = 6, kCombValues = 4;   // (one FUNC's, RAND's, COMB's values)
 constexpr int kLfoXValues = 6, kEnvXValues = 4;                      // (one LFO's, one envelope's M4 values)
 constexpr int kModalXValues = 12;                                    // (one operator's MODAL values)

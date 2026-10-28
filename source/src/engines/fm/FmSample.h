@@ -6,7 +6,14 @@
 // of the world as FM. Its input (FM) moves the reading place: phase modulation of the recording itself.
 //   A READ (a list): ONCE, LOOP, PING-PONG, REVERSE (once, from the end)
 //   B START 0..100 (% of the recording)  C LENGTH 0..200 (0..100 % of what is left; 1 ms at least)
-//   D XFADE 0..100: LOOP's seam crossfaded over up to half the loop (no click where it joins)
+//   D LOOP: XFADE 0..100 - the seam crossfaded over up to half the loop (no click where it joins); ONCE, REVERSE,
+//     PING-PONG: FADE 0..100 - the reading's own fades, raised cosine, 1 ms (0) .. 200 ms (100), in at its start and
+//     (ONCE, REVERSE) out before the region's end
+// No click anywhere (28/10; the user heard pops - in FM every corner of a modulator is a jump in its carrier's phase):
+// a raised-cosine fade at least at every start and every end - 1 ms where the operator is heard (a hit keeps its
+// snap), 5 ms where it only modulates (heard through a carrier's phase, a fast change is a click: measured, 1 ms left
+// the carrier's step 1.76 x its own), and a voice taken while it still sounds (stolen, or its note again) lets its
+// old reading go over the same time while the new one comes in - never a jump.
 // Pitch: the note (with COARSE, FINE, FIXED... as any operator) against the root C3 (MIDI 60): played at C3 the
 // recording is heard as it is. Read with 4-point Hermite interpolation at the engine's (oversampled) rate.
 // Nothing here allocates or frees on the audio thread: SampleSlot hands a recording over and takes the old one back.
@@ -94,31 +101,87 @@ inline float sampleAt(const SampleData& s, double pos)
     return ((c3 * f + c2) * f + c1) * f + x0;
 }
 
+// the reading's fade, ms: LOOP keeps D for its seam (its start: the de-click); the others D's FADE, 1 .. 200 ms -
+// never under the de-click (1 ms heard, 5 ms modulating)
+constexpr double kSampleDeclickMs = 1.0, kSampleModDeclickMs = 5.0, kSampleTailMs = 3.0;
+inline double sampleFadeMs(int read, double d, double declickMs = kSampleDeclickMs)
+{
+    return read == SR_LOOP ? declickMs : std::max(declickMs, std::pow(200.0, std::clamp(d, 0.0, 100.0) / 100.0));
+}
+inline float raisedCosine(double x)                      // (0 at 0, 1 at 1; smooth at both ends)
+{
+    return (float)(0.5 - 0.5 * std::cos(3.14159265358979323846 * std::clamp(x, 0.0, 1.0)));
+}
+
 // one voice's reading of it
 struct SamplePlay {
     double pos = 0.0;
     int dir = 1;
     bool done = true;
+    double age = 0.0;                            // output samples since the start (the fade in)
+    float gain = 0.0f;                           // the fades' gain on the last sample
+    // the reading a new start took over while it still sounded: faded out over kSampleTailMs from its place
+    double tpos = 0.0, tleft = 0.0, tlen = 0.0;
+    int tdir = 1;
+    float tgain = 0.0f;
+    bool tailPending = false;
 
     void start(int read, double a, double b)
     {
+        if (!done && gain > 0.0f) {                       // (still sounding: its reading goes out, not cut)
+            tpos = pos;
+            tdir = dir;
+            tgain = gain;
+            tailPending = true;
+        }
         dir = read == SR_REVERSE ? -1 : 1;
         pos = read == SR_REVERSE ? b : a;
         done = false;
+        age = 0.0;
+        gain = 0.0f;
     }
-    // one sample: step = source samples a sample (the pitch), pm = the input's offset, in source samples
-    float process(const SampleData& s, int read, double a, double b, double xfade, double step, double pm)
+    // one sample: step = source samples a sample (the pitch), pm = the input's offset (source samples), d = D,
+    // perMs = output samples a millisecond (the fades are in the output's time: the same at any pitch)
+    float process(const SampleData& s, int read, double a, double b, double d, double step, double pm, double perMs,
+                  double declickMs = kSampleDeclickMs)
     {
-        if (done) return 0.0f;
+        float tail = 0.0f;
+        if (tailPending) {
+            tailPending = false;
+            tlen = tleft = std::max(1.0, std::max(kSampleTailMs, declickMs) * perMs);
+        }
+        if (tleft > 0.0) {                                // (the old reading, its gain going to 0)
+            tail = sampleAt(s, tpos + pm) * tgain * raisedCosine(tleft / tlen);
+            tpos += tdir * step;
+            tleft = tpos < 0.0 || tpos > (double)s.data.size() - 1.0 ? 0.0 : tleft - 1.0;
+        }
+        if (done) return tail;
         float y = sampleAt(s, pos + pm);
         if (read == SR_LOOP) {                                // the seam: the loop's end crossfaded into its start
             const double len = b - a;
-            const double xf = std::min({ len * 0.5 * std::clamp(xfade / 100.0, 0.0, 1.0), a, len });
+            const double xf = std::min({ len * 0.5 * std::clamp(d / 100.0, 0.0, 1.0), a, len });
             if (xf > 1.0 && pos > b - xf) {
                 const float w = (float)((pos - (b - xf)) / xf);
                 y = (1.0f - w) * y + w * sampleAt(s, pos - len + pm);
             }
         }
+        // the fades: in from the start; out before the end (ONCE, REVERSE); both shortened together when the region
+        // is shorter than the two (the region's length in output samples, at this pitch)
+        double fin = sampleFadeMs(read, d, declickMs) * perMs, fout = read == SR_ONCE || read == SR_REVERSE ? fin : 0.0;
+        if (read == SR_LOOP) fout = 0.0;
+        const double regionOut = (b - a) / std::max(step, 1.0e-9);
+        if (fin + fout > regionOut && regionOut > 0.0) {
+            const double k = regionOut / (fin + fout);
+            fin *= k;
+            fout *= k;
+        }
+        float g = fin > 0.0 ? raisedCosine(age / fin) : 1.0f;
+        if (fout > 0.0) {
+            const double left = (dir > 0 ? b - pos : pos - a) / std::max(step, 1.0e-9);   // (output samples to the end)
+            g *= raisedCosine(left / fout);
+        }
+        gain = g;
+        age += 1.0;
         pos += dir * step;
         switch (read) {
         case SR_LOOP:
@@ -135,7 +198,8 @@ struct SamplePlay {
         case SR_REVERSE: if (pos < a) done = true; break;
         default: if (pos > b) done = true; break;         // ONCE
         }
-        return y;
+        if (done) gain = 0.0f;
+        return y * g + tail;
     }
 };
 

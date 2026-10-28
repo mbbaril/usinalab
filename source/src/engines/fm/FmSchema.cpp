@@ -11,7 +11,7 @@ struct D { const char* name; int min, max, def; };
 // an operator's 27 (eng_opx.c OPX_PD). FIXED HZ from 0: a preset stores 0 for "never set" (the operator then is not
 // fixed; the firmware's SET writes >= 1). The defaults: the init patch's operator (OP1 differs: LEVEL 100)
 const D kOp[kOpValues] = {
-    { "MODE", 0, 12, 0 }, { "WAVE", 0, 32, 0 }, { "FREQ", 0, 1, 0 }, { "COARSE", 0, 38, 7 }, { "FINE", 50, 200, 100 },
+    { "MODE", 0, 13, 0 }, { "WAVE", 0, 32, 0 }, { "FREQ", 0, 1, 0 }, { "COARSE", 0, 38, 7 }, { "FINE", 50, 200, 100 },
     { "DETUNE", -50, 50, 0 }, { "TRANS", -12, 12, 0 }, { "FIXED HZ", 0, 999999, 0 }, { "LEVEL", 0, 100, 0 },
     { "ATK", 0, 127, 0 }, { "DEC", 0, 127, 0 }, { "SUS", 0, 100, 100 }, { "REL", 0, 127, 26 }, { "CURVE", 0, 10, 0 },
     { "A", 0, 100, 0 }, { "B", 0, 100, 0 }, { "C", 0, 200, 100 }, { "VEL", 0, 100, 0 }, { "EG1", -2304, 2304, 0 },
@@ -126,7 +126,7 @@ std::vector<ValueDesc> build()
         add(o + "IRREG", 0, 100, 0);                     // added to the material's own irregularity
         add(o + "STRIKE", 0, 100, 80);                   // the mallet at every note
         add(o + "HARDNESS", 0, 100, 60);                 // the mallet's (and the input's) brightness
-        add(o + "EXCITER", 0, 3, 0);                     // stage 2: STRIKE, BOW, BLOW, SCRAPE
+        add(o + "EXCITER", 0, 4, 0);                     // stage 2: STRIKE, BOW, BLOW, SCRAPE; DROP (28/10)
         add(o + "PRESSURE", 0, 100, 50);                 // the bow's pressure, the breath's turbulence, the scrape's rate
         add(o + "TENSION", 0, 100, 0);                   // the pitch rising with the amplitude (a gong, a tom)
         add(o + "RATTLE", 0, 100, 0);                    // a contact buzzing on the peaks (a snare, a chain, a bridge)
@@ -141,6 +141,12 @@ std::vector<ValueDesc> build()
     add("LPG COLOR", 0, 100, 50);
     for (int k = 1; k <= 6; ++k)                        // the operators' RATE KEY: at 100 %, an octave above KT CENTER
         add("OP" + std::to_string(k) + ".RATE KEY", 0, 100, 0);   // halves the envelope's times, one below doubles
+    for (int k = 1; k <= 6; ++k)                        // the operators' MODAL DAMP: a hand on the object at the key's
+        add("OP" + std::to_string(k) + ".DAMP", 0, 100, 0);       // release (0: it rings out, as before)
+    for (int k = 1; k <= 6; ++k)                        // the operators' UNISON SUB: a square an octave below
+        add("OP" + std::to_string(k) + ".SUB", 0, 100, 0);
+    for (int k = 1; k <= 6; ++k)                        // the operators' UNISON PWM: the squares' widths moving
+        add("OP" + std::to_string(k) + ".PWM", 0, 100, 0);
     // (every value: the firmware's, then ours, exactly as the enums count them)
     if ((int)v.size() != kNumValues) std::abort();       // (a table that disagrees with the enums: stop at once)
     return v;

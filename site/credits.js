@@ -4,7 +4,7 @@ const projects=[['Felucca','Leo Kuroshita (Hügelton)','GPL-3.0'],['sst-filters'
 export function renderCredits(root,el) {
   root.append(el('h2','','Créditos e licenças'),el('p','perform-note','Usina · Mario Baril · Ruído Instrumentos'));
   const included=[...projects];if(globalThis.Capacitor?.getPlatform?.()==='android')included.push(['Oboe 1.9.3','Google LLC e colaboradores','Apache-2.0','https://github.com/google/oboe/tree/1.9.3']);
-  const sourceLink=el('a','','Código-fonte desta versão');sourceLink.href='./usinalab-source-0.1.47-alpha.5.zip';sourceLink.setAttribute('download','');root.append(sourceLink);
+  const sourceLink=el('a','','Código-fonte desta versão');sourceLink.href='./usinalab-source-0.1.48-alpha.6.zip';sourceLink.setAttribute('download','');root.append(sourceLink);
   const list=el('ul','credit-list');for(const [name,author,license,url] of included){const item=el('li');item.append(el('strong','',name),el('span','',`${author} · ${license}`));if(url){const link=el('a','','Repositório');link.href=url;link.target='_blank';link.rel='noopener noreferrer';item.append(link);}list.append(item);}root.append(list);
   const nav=el('div','subtabs'),text=el('pre','license-text');text.id='license-text';let revision=0;
   for(const [name,path] of documents){const b=el('button','',name);b.onclick=async()=>{const request=++revision;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n===b));text.textContent='Carregando…';try{const response=await fetch('./'+path);if(!response.ok)throw Error('Licença indisponível neste pacote.');const content=await response.text();if(request===revision)text.textContent=content;}catch(error){if(request===revision)text.textContent=error.message;}};nav.append(b);}

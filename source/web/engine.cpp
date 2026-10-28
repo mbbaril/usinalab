@@ -60,7 +60,7 @@ const std::vector<Param>& parameters() {
         const char* vap[]={"position","size","pitch","density","texture","drywet","spread","feedback","reverb"};
         const float vapDefaults[]={.2f,.5f,.5f,.7f,.5f,.5f,.3f,0,.3f};
         for(int i=0;i<9;++i) p.push_back({"vap_"+std::string(vap[i]),vap[i],"VAPOR",0,1,vapDefaults[i],.001f});
-        for(auto id:{"vap_on","vap_freeze","vap_reverse"}) a(id,id,"VAPOR",0,1,std::string(id)=="vap_on"?1:0,1);
+        for(auto id:{"vap_on","vap_freeze","vap_reverse","vap_limit"}) a(id,id,"VAPOR",0,1,std::string(id)=="vap_on"?1:0,1);   // (LIMIT, 28/10: off by default, as the plugin's)
         a("vap_mode","Granular / Stretch / Loop / Spectral / Reverb / Resonator","VAPOR",0,5,0,1);
         a("vap_quality","Stereo16 / Mono16 / Stereo8 / Mono8","VAPOR",0,3,0,1);
         a("vap_trig","Internal / Notes / Clock","VAPOR",0,2,1,1);
@@ -229,7 +229,7 @@ void Instrument::prepareFx() {
     float* v[]={&vk.position,&vk.size,&vk.pitch,&vk.density,&vk.texture,&vk.dryWet,&vk.spread,&vk.feedback,&vk.reverb};
     const char* vi[]={"vap_position","vap_size","vap_pitch","vap_density","vap_texture","vap_drywet","vap_spread","vap_feedback","vap_reverb"};
     for(int i=0;i<9;++i)*v[i]=mod(vi[i],fm::FD_VAP_POSITION+i,0,1);
-    vk.freeze=get("vap_freeze")>.5f;vk.reverse=get("vap_reverse")>.5f;vk.mode=(int)get("vap_mode");vk.quality=(int)get("vap_quality");
+    vk.freeze=get("vap_freeze")>.5f;vk.reverse=get("vap_reverse")>.5f;vk.limit=get("vap_limit")>.5f;vk.mode=(int)get("vap_mode");vk.quality=(int)get("vap_quality");
     dk.driveDb=mod("dist_drive",fm::FD_DIST_DRIVE,0,48);dk.character=mod("dist_char",fm::FD_DIST_DRIVE+1,0,1);
     dk.symmetry=mod("dist_sym",fm::FD_DIST_DRIVE+2,-1,1);dk.tone=mod("dist_tone",fm::FD_DIST_DRIVE+3,-1,1);dk.mix=mod("dist_mix",fm::FD_DIST_DRIVE+4,0,1);
     dk.mode=(int)get("dist_mode");dk.outputDb=get("dist_out");

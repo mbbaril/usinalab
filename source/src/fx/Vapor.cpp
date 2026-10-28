@@ -91,6 +91,9 @@ struct Vapor::Impl {
     usina::Zeroed<cl::GranularProcessor> processor;
     uint32_t rng = 0x21;                                 // (the processor's own random generator: stmlib's seed)
     float pots[kNumPots] {};
+    // LIMIT (Vapor.h): the input's held power, the fed-back signal's ceiling (inside the module)
+    double inHeld = 0.0;
+    static constexpr double kHeldFall = 0.99923;         // (a block is 1 ms at 32 kHz: 10 dB in power over ~3 s)
 
     bool direct = false;
     usina::Resampler down, up;                           // host -> module, module -> host
@@ -180,6 +183,7 @@ struct Vapor::Impl {
                                     k.feedback, k.reverb };
         for (int i = 0; i < kNumPots; ++i) pots[i] = std::clamp(v[i], 0.0f, 1.0f);   // (settled where the knobs are)
         previousGate = false;
+        inHeld = 0.0;                                    // (LIMIT: from rest)
         restartStreams();
     }
 
@@ -223,6 +227,16 @@ struct Vapor::Impl {
             in[i].r = toCodec(inQ.r[(size_t)(inQ.head + i)]);
         }
         inQ.pop(kBlock);
+        // LIMIT (Vapor.h): the input's power held (its peak, falling ~10 dB over 3 s) - the fed-back signal's ceiling
+        // inside the module (+6 dB: the patch in tools/port/port_clouds.py); 0, off: the module as it is
+        double pin = 0.0;
+        for (int i = 0; i < kBlock; ++i) {
+            const double a = in[i].l / 32768.0, b = in[i].r / 32768.0;
+            pin += 0.5 * (a * a + b * b);
+        }
+        inHeld = std::max(pin / kBlock, inHeld * kHeldFall);
+        // (the module injects the fed-back signal x 1.4: its power ceiling half the input's, what goes in near its level)
+        p->usina_fb_ceiling = k.limit ? (float)std::max(0.5 * inHeld, 1.0e-12) : 0.0f;
         for (int i = 0; i < kPrepares; ++i) processor->Prepare();
         processor->Process(in, out, kBlock);
         for (int i = 0; i < kBlock; ++i) outQ.push(out[i].l / 32768.0f, out[i].r / 32768.0f);

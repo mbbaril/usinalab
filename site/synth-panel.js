@@ -6,7 +6,7 @@ import {operatorRatioText,voiceFilterState} from './synth-parameters.js';
 import {operatorSections,mountOperatorRows,mountOperatorMode} from './operator-layout.js';
 import {filterRows,mountFilterRows} from './filter-layout.js';
 import {filterResponseView} from './filter-response.js';
-const modes=['FM','RING','FILTER','FILTER FM','FOLD','EFFECT','BYPASS','MUTE','MODAL','CHAOS','STOCHASTIC','MACRO','SAMPLE'];
+const modes=['FM','RING','FILTER','FILTER FM','FOLD','EFFECT','BYPASS','MUTE','MODAL','CHAOS','STOCHASTIC','MACRO','SAMPLE','UNISON'];
 export function createSynthPanel({el,param,descriptor,descriptors,metadata,algorithms,field,section,subtabs,setParam,rerender,renderModulation,filterRate,samplePanel}){
   let op=0,page=0,modalPage=0,transient,expanded=!matchMedia('(max-height: 500px)').matches;
   const get=ids=>ids.map(id=>descriptor(id)).filter(Boolean);

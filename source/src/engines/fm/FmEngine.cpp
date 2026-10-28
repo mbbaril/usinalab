@@ -247,6 +247,11 @@ Engine::OpCoef Engine::opCoef(const OpParams& o, int fbOffset, double da, double
         c.fe = std::clamp(C, 0.0, 200.0);                // (as CUTOFF: half semitones from the pitch, 100 = on it)
         c.fres = std::clamp(D, 0.0, 100.0);
         c.foff = (c.fe - 100.0) / 24.0;
+    } else if (o.mode == UNISON) {                       // (FmUnison.h) A: VOICES, a list; B: DETUNE; C: MIX; D: DRIFT
+        c.ftype = std::clamp(o.a, 0, kUnisonMax - 1);
+        c.b = (float)std::clamp(B, 0.0, 100.0);
+        c.fe = std::clamp(C, 0.0, 200.0);
+        c.fres = std::clamp(D, 0.0, 100.0);
     } else if (o.mode == SAMPLE) {                       // (FmSample.h) A: READ, a list; B: START; C: LENGTH; D: XFADE
         c.ftype = ((o.a % kSampleReads) + kSampleReads) % kSampleReads;
         c.b = (float)std::clamp(B, 0.0, 100.0);
@@ -450,6 +455,8 @@ ModalSettings Engine::modalSettings(const Voice& v, int k) const
     s.pressure = std::clamp(po.pressure + mo(9), 0.0, 100.0) / 100.0;
     s.tension = std::clamp(po.tension + mo(10), 0.0, 100.0) / 100.0;
     s.rattle = std::clamp(po.rattle + mo(11), 0.0, 100.0) / 100.0;
+    // DAMP: only once the key is let go (a held note rings as the material says)
+    s.damp = v.gate ? 0.0 : std::clamp(po.damp + v.mod[(size_t)extIndex(XV_O1DAMP + op)], 0.0, 100.0) / 100.0;
     return s;
 }
 
@@ -844,6 +851,8 @@ void Engine::noteOn(int note, int velocity, int channel)
         if (d.mode[(size_t)k] == CHAOS) {                 // (CHAOS: each note from the map's start - playable, the same)
             const OpCoef& c = d.oc[(size_t)k];
             o.chaos.start(c.ftype, c.b, c.fe, xorshift(v->rng));
+        } else if (d.mode[(size_t)k] == UNISON) {         // (UNISON: the side copies from random phases)
+            o.uni.start(v->rng);
         } else if (d.mode[(size_t)k] == STOCH) {          // (STOCHASTIC: each note a new cycle of points)
             o.stoch.start(d.oc[(size_t)k].fe, xorshift(v->rng));
         } else if (d.mode[(size_t)k] == SAMPLE) {         // (SAMPLE: each note from the region's start - its end, REVERSE)
@@ -1094,7 +1103,54 @@ float Engine::opSample(Voice& v, int k, float in, float self, double g)
         double a = 0.0, b = 0.0;
         sampleRegion(*smp, c.b, c.fe, a, b);
         const double perCycle = smp->rate / kSampleRootHz;   // (a cycle at the root, in the recording's samples)
-        y = (float)(o.sp.process(*smp, c.ftype, a, b, c.fres, o.inc * perCycle, in * perCycle) * g);
+        const double declick = ((d.dout >> k) & 1) ? kSampleDeclickMs : kSampleModDeclickMs;   // (heard; only modulating)
+        y = (float)(o.sp.process(*smp, c.ftype, a, b, c.fres, o.inc * perCycle, in * perCycle, fs * 0.001, declick) * g);
+        break;
+    }
+    case UNISON: {                                        // (FmUnison.h) the wave as a stack of detuned copies; the
+        const OpCoef& c = v.oc[(size_t)k];                // centre is the operator's own phase, every copy takes the input
+        const int n = std::clamp(c.ftype + 1, 1, kUnisonMax);
+        const int op = 5 - k;
+        const double sub = std::clamp(patch.op[(size_t)op].sub + v.mod[(size_t)extIndex(XV_O1SUB + op)], 0.0, 100.0) / 100.0;
+        const double pwm = std::clamp(patch.op[(size_t)op].pwm + v.mod[(size_t)extIndex(XV_O1PWM + op)], 0.0, 100.0) / 100.0;
+        double centre = 1.0, side = 0.0;
+        unisonGains(c.fe / 200.0, n, centre, side);
+        UnisonState& u = o.uni;
+        // a band-limited table at the level the increment allows (as osc's SAW HD / SQR HD)
+        const auto hd = [&](const std::array<std::array<float, kTableN + 1>, kHdLevels>& L, double p, double inc) {
+            const double q = std::log2(std::max(inc * hdScale, 1e-12) * 16777216.0) - 15.0;
+            const int nq = (int)std::floor(q);
+            int a = std::min(nq + 1, 8), b = std::min(nq + 2, 8);
+            double w = q - nq;
+            if (nq + 1 < 0) { a = b = 0; w = 0.0; }
+            const float x = lookup(L[(size_t)a], p);
+            return (double)x + (lookup(L[(size_t)b], p) - x) * w;
+        };
+        // PWM on the squares: each copy a pulse of its own width (two saws apart), swept by its own triangle
+        const bool pulse = pwm > 0.0 && (wave == SQR || wave == SQRHD);
+        const auto copy = [&](double p, int i) {
+            if (!pulse) return (double)osc(p);
+            const double w = 0.5 + 0.45 * pwm * (2.0 * unisonTri(u.pwmPh[(size_t)i]) - 1.0);
+            u.pwmPh[(size_t)i] += unisonPwmRate(i) / fs;
+            if (u.pwmPh[(size_t)i] >= 1024.0) u.pwmPh[(size_t)i] -= 1024.0;
+            return hd(T.hdSaw, p, o.inc) - hd(T.hdSaw, p + w, o.inc);   // (two +-1 ramps apart: a +-1 pulse)
+        };
+        double s = copy(ph + in, 0) * centre;
+        if (n > 1) {
+            u.drifts(c.fres / 100.0, n, fs, v.rng);
+            const double spread = unisonSpread(c.b / 100.0);
+            for (int i = 1; i < n; ++i) {
+                s += copy(u.ph[(size_t)i] + in, i) * side;
+                u.ph[(size_t)i] += o.inc * (1.0 + spread * unisonPosition(i, n) + u.drift[(size_t)i]);
+                if (u.ph[(size_t)i] >= 1024.0) u.ph[(size_t)i] -= 1024.0;
+            }
+        }
+        if (sub > 0.0) {                                  // SUB: a square an octave below the centre
+            s += 0.7 * sub * hd(T.hdSqr, u.subPh + 0.5 * in, 0.5 * o.inc);
+            u.subPh += 0.5 * o.inc;
+            if (u.subPh >= 1024.0) u.subPh -= 1024.0;
+        }
+        y = (float)(s * g);
         break;
     }
     case STOCH: {                                         // its breakpoints, a cycle of them a cycle of the phase

@@ -192,6 +192,82 @@ int main()
         }
         check(renderAllocs == 0 && renderFrees == 0, "HANDOVER: allocations + frees inside render", (double)(renderAllocs + renderFrees), "0");
     }
+    // NO CLICK (28/10; the user heard pops: in FM a modulator's corner is a jump in its carrier's phase). A recording that
+    // is loud where it starts and where it is cut (a 441 Hz sine at 0.8, START at 30 %, LENGTH 10 %: both mid-wave):
+    // its largest step between two samples at the start and at the end, against the sine's own largest step
+    {
+        const auto sine = [](int i, int) { return 0.8 * std::sin(2.0 * kPi * 441.0 * i / 48000.0 + 0.7); };
+        const double natural = 0.8 * 2.0 * kPi * 441.0 / kFs;   // (the sine's steepest step a sample)
+        const auto steps = [&](int read, int fade, double& atStart, double& atEnd, std::vector<float>* keep = nullptr) {
+            auto e = std::make_unique<Engine>();
+            e->prepare(kFs, false, kFs);
+            e->setSample(recording(48000, 48000.0, sine));
+            const auto y = render(*e, sampler(read, 30, 20, fade), 60, 0.3);   // (LENGTH 20 of 200: 10 % of the rest)
+            const size_t end = (size_t)(0.70 * 48000 * 0.10);                // (the region: 3360 samples at C3)
+            atStart = atEnd = 0.0;
+            for (size_t i = 1; i < 480; ++i) atStart = std::max(atStart, (double)std::fabs(y[i] - y[i - 1]));
+            for (size_t i = end - 480; i < end + 480 && i < y.size(); ++i) atEnd = std::max(atEnd, (double)std::fabs(y[i] - y[i - 1]));
+            if (keep) *keep = y;
+        };
+        // the operator at LEVEL 100 scales the recording: the natural step, in its output's units
+        auto ref = std::make_unique<Engine>();
+        ref->prepare(kFs, false, kFs);
+        ref->setSample(recording(48000, 48000.0, sine));
+        const auto steady = render(*ref, sampler(SR_LOOP, 0, 200, 0), 60, 0.2);
+        double steadyStep = 0.0;
+        for (size_t i = 4801; i < 9600; ++i) steadyStep = std::max(steadyStep, (double)std::fabs(steady[i] - steady[i - 1]));
+        double s0, e0;
+        steps(SR_ONCE, 0, s0, e0);
+        check(s0 < steadyStep * 1.25, "NO CLICK: ONCE starting mid-wave (largest step x the sine's)", s0 / steadyStep, "< 1.25");
+        check(e0 < steadyStep * 1.25, "NO CLICK: ONCE cut mid-wave (largest step x the sine's)", e0 / steadyStep, "< 1.25");
+        double s1, e1;
+        steps(SR_REVERSE, 0, s1, e1);
+        check(s1 < steadyStep * 1.25 && e1 < steadyStep * 1.25, "NO CLICK: REVERSE, start and end (worst x the sine's)",
+              std::max(s1, e1) / steadyStep, "< 1.25");
+        (void)natural;
+        // FADE: D 50 -> 200^0.5 = 14.1 ms; half way in (7.1 ms) the raised cosine is at half
+        std::vector<float> f;
+        double fs0, fe0;
+        steps(SR_ONCE, 50, fs0, fe0, &f);
+        double peakEarly = 0.0, peakLater = 0.0;
+        for (size_t i = 300; i < 380; ++i) peakEarly = std::max(peakEarly, (double)std::fabs(f[i]));   // (~6.6 .. 7.9 ms)
+        for (size_t i = 960; i < 1100; ++i) peakLater = std::max(peakLater, (double)std::fabs(f[i]));  // (past the fade)
+        const double half = peakEarly / std::max(1e-9, peakLater);
+        check(half > 0.35 && half < 0.65, "FADE 50 = 14 ms: half way, half the level (x)", half, "0.35 .. 0.65");
+    }
+    // NO CLICK when a voice still sounding is taken (its note again on a full engine, or a steal): the reader itself,
+    // started again mid-sound - its old reading goes out over 3 ms while the new one comes in
+    {
+        auto s = recording(48000, 48000.0, [](int i, int) { return 0.8 * std::sin(2.0 * kPi * 441.0 * i / 48000.0); });
+        SamplePlay sp;
+        sp.start(SR_LOOP, 0.0, 47999.0);
+        double big = 0.0, steady = 0.0;
+        float last = 0.0f;
+        for (int i = 0; i < 9600; ++i) {
+            if (i == 4800 + 37) sp.start(SR_LOOP, 12000.5, 47999.0);   // (again, from another place in the wave)
+            const float y = sp.process(*s, SR_LOOP, i < 4837 ? 0.0 : 12000.5, 47999.0, 0.0, 1.0, 0.0, kFs * 0.001);
+            if (i > 1 && i < 4800) steady = std::max(steady, (double)std::fabs(y - last));
+            if (i >= 4837 && i < 4837 + 480) big = std::max(big, (double)std::fabs(y - last));
+            last = y;
+        }
+        check(big < steady * 1.6, "NO CLICK: restarted while sounding (largest step x the sine's)", big / steady, "< 1.6");
+    }
+    // NO CLICK in FM: OP2 SAMPLE (a loud recording cut mid-wave, ONCE) modulating OP1, an FM sine - the carrier's largest
+    // step at the modulator's start and end, against its largest while the modulator runs
+    {
+        auto e = std::make_unique<Engine>();
+        e->prepare(kFs, false, kFs);
+        e->setSample(recording(48000, 48000.0, [](int i, int) { return 0.8 * std::sin(2.0 * kPi * 97.0 * i / 48000.0 + 1.1); }));
+        const std::map<std::string, int> v = { { "ALGO", 0 }, { "OP1.MODE", FM }, { "OP1.LEVEL", 100 }, { "OP1.SUS", 100 },
+            { "OP2.MODE", SAMPLE }, { "OP2.A", SR_ONCE }, { "OP2.B", 30 }, { "OP2.C", 20 }, { "OP2.LEVEL", 85 }, { "OP2.SUS", 100 } };
+        const auto y = render(*e, v, 60, 0.3);
+        const size_t end = 3360;
+        double during = 0.0, edges = 0.0;
+        for (size_t i = 600; i < end - 600; ++i) during = std::max(during, (double)std::fabs(y[i] - y[i - 1]));
+        for (size_t i = 1; i < 300; ++i) edges = std::max(edges, (double)std::fabs(y[i] - y[i - 1]));
+        for (size_t i = end - 300; i < end + 300; ++i) edges = std::max(edges, (double)std::fabs(y[i] - y[i - 1]));
+        check(edges < during * 1.1, "NO CLICK: FM carrier at its modulator's start and end (x while it runs)", edges / during, "< 1.1");
+    }
     std::printf(failures ? "\nFAILURES (%d failed)\n" : "\nall passed\n", failures);
     return failures ? 1 : 0;
 }

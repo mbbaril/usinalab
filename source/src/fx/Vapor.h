@@ -17,6 +17,14 @@
 // The knobs stay in the module's own range, 0 .. 65535/65536 (its converter's): at exactly 1 its table lookups
 // read one value past their tables (measured 22/10 with the address sanitizer, tools/port/check_clouds.sh).
 //
+// LIMIT (28/10; the user: "o density no vapor causar um feedback com muita energia" - measured, tests/VaporEnergyLab:
+// GRANULAR at DENSITY 0.9-1.0 and FEEDBACK 0.5 and up grew 25 dB over its input, to the module's ceiling, the loop's
+// gain past 1 with the grains overlapping): the fed-back signal held, inside the module and in the block it is
+// measured, within 6 dB of the input's level (that level held over the last seconds, so the tails after the notes go
+// on and fade) - a patch of ours in tools/port/port_clouds.py (a governor on the FEEDBACK knob could not: the loop runs
+// through ~1 s of buffer). Below the ceiling it does nothing: the module bit for bit. FREEZE, the module's own hold,
+// is untouched. Off: the module as it is, runaway included.
+//
 // Latency: the converters' and one block (latencySamples(); about 3 ms at 48 kHz). Not reported to the host yet, as
 // the texture's (docs/BACKLOG.md: a minimum-phase converter and a fixed report are queued). No allocation in
 // process(); prepare() sizes everything.
@@ -35,6 +43,7 @@ public:
         float position = 0.5f, size = 0.5f, pitch = 0.5f, density = 0.5f, texture = 0.5f;   // (pitch: 0.5 = unison)
         float dryWet = 0.5f, spread = 0.0f, feedback = 0.0f, reverb = 0.0f;
         bool freeze = false, reverse = false;
+        bool limit = false;                              // (LIMIT, above: off by default - the user, 28/10)
         int mode = kGranular, quality = kStereo16;
     };
 

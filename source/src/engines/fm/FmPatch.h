@@ -52,6 +52,8 @@ struct OpParams {
     int material = 0, bright = 0, stiff = 0, position = 30, density = 32, irreg = 0, strike = 80, hardness = 60;
     int exciter = 0, pressure = 50, tension = 0, rattle = 0;   // (stage 2: STRIKE / BOW / BLOW / SCRAPE; 0..100)
     int rateKey = 0;                             // RATE KEY 0..100: the envelope's times by the note (KT CENTER's)
+    int damp = 0;                                // MODAL DAMP 0..100: a hand on the object at the key's release
+    int sub = 0, pwm = 0;                        // UNISON SUB, PWM 0..100 (FmUnison.h)
     Adsr adsr() const { return { atk, dec, sus, rel, curve, envMode, atkCurve, relCurve, envRetrig }; }
 };
 

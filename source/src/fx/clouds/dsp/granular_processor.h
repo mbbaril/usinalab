@@ -179,6 +179,7 @@ class GranularProcessor {
   bool bypass_;
   bool reset_buffers_;
   float freeze_lp_;
+  float usina_fb_atten_;  // (USINA: LIMIT - the attenuation on the fed-back signal, 0 none)
   float dry_wet_;
   
   void* buffer_[2];

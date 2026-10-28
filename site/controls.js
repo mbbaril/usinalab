@@ -119,7 +119,9 @@ export function operatorValue(mode, which, fx, models = {}) {
     case 9:return [spec('MODEL',null,models.chaos),spec('CHAOS'),spec('SHAPE',v=>pct(Math.floor((v+1)/2))),spec('SMOOTH')][which];
     case 10:return [spec('DISTRIB',null,models.stoch),spec('LVL STEP'),spec('POINTS',v=>String(3+Math.round(v/200*29))),spec('LEN STEP')][which];
     case 11:return [spec('MODEL',null,models.macro),spec('HARMONICS'),spec('TIMBRE',v=>pct(Math.floor((v+1)/2))),spec('MORPH')][which];
-    case 12:return [spec('READ',null,['ONCE','LOOP','PING-PONG','REVERSE']),spec('START'),spec('LENGTH',v=>pct(Math.floor((v+1)/2))),spec('XFADE')][which];   // (SAMPLE: engines/fm/FmSample.h)
+    case 12:return [spec('READ',null,['ONCE','LOOP','PING-PONG','REVERSE']),spec('START'),spec('LENGTH',v=>pct(Math.floor((v+1)/2))),
+      ((fx%4)+4)%4===1?spec('XFADE'):spec('FADE',v=>{const ms=200**(Math.max(0,Math.min(100,v))/100);return `${ms<10?ms.toFixed(1):Math.round(ms)} ms`;})][which];   // (SAMPLE: engines/fm/FmSample.h; D: LOOP's seam, the others' fades)
+    case 13:return [spec('VOICES',null,['1','2','3','4','5','6','7','8','9']),spec('DETUNE'),spec('MIX',v=>pct(Math.floor((v+1)/2))),spec('DRIFT')][which];   // (UNISON: engines/fm/FmUnison.h)
     default:return null;
   }
 }

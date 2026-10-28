@@ -50,6 +50,10 @@ public:
     void process(float* l, float* r, int n, const Knobs& k, const bool* gate, bool on);
     bool active() const;
     int latencySamples() const;                          // host samples, at the current media
+    // the dry a bus mixes with it, in place, made as the texture's own path makes its signal (the same converters, no
+    // module: latencySamples() later, filtered alike); false (untouched) when a plain delay matches it - the same
+    // rate, or the texture off. Called once a block, before process, while it sits in a running bus
+    bool dryTwin(float* l, float* r, int n);
 
     struct Impl;
 

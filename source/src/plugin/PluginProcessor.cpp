@@ -18,8 +18,8 @@ const char* const kTexIds[kTexParams] = { "tex_time", "tex_size", "tex_shape", "
 // the switches and lists
 const char* const kVapIds[] = { "vap_position", "vap_size", "vap_pitch", "vap_density", "vap_texture", "vap_drywet",
                                 "vap_spread", "vap_feedback", "vap_reverb", "vap_on", "vap_freeze", "vap_reverse",
-                                "vap_mode", "vap_quality", "vap_trig" };
-enum VapParam { kVapKnobs = 9, kVapOn = 9, kVapFreeze, kVapReverse, kVapMode, kVapQuality, kVapTrig };
+                                "vap_mode", "vap_quality", "vap_trig", "vap_limit" };
+enum VapParam { kVapKnobs = 9, kVapOn = 9, kVapFreeze, kVapReverse, kVapMode, kVapQuality, kVapTrig, kVapLimit };
 
 // the module's knob laws, for the values shown (fx/texture/pot_channel.h, without its smoothing): PITCH's intervals
 float texPitchSemitones(float v)
@@ -126,6 +126,8 @@ UsinaProcessor::UsinaProcessor()
     pInGain = params.getRawParameterValue("in_gain");
     pInMix = params.getRawParameterValue("in_mix");
     pInFx = params.getRawParameterValue("in_fx");
+    pCapLen = params.getRawParameterValue("cap_len");
+    pCapNorm = params.getRawParameterValue("cap_norm");
     pFeedback = params.getRawParameterValue("feedback");
     pFbTime = params.getRawParameterValue("fb_time");
     pLevel = params.getRawParameterValue("level");
@@ -318,6 +320,12 @@ void UsinaProcessor::timerCallback()
     applyCcMaps();
     runPendingActions();
     engine.collectSample();                              // (SAMPLE: a recording the audio thread let go, freed here)
+    // the latency the host compensates (28/10): the guard's and the effects' chain (the TEXTURE, the VAPOR behind
+    // their converters), told only when it changes (a host may restart its graph)
+    if (const int lat = guard.latencySamples() + fxChainLatency.load(std::memory_order_relaxed); lat != reportedLatency) {
+        reportedLatency = lat;
+        setLatencySamples(lat);
+    }
     if (capWasArmed && (!capArmed.load() || capFull.load())) captureFinish();
 }
 
@@ -481,6 +489,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout UsinaProcessor::createLayout
     l.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "rev_color", 1 }, "Reverb Color",
                                                        juce::StringArray { "CLEAN", "TAPE" }, 0));
     l.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "rev_on", 1 }, "Reverb On", true));
+    // SAMPLE's capture (28/10): its LENGTH (FREE, or bars from the host's next bar) and its AUTO LEVEL - the rig's, not
+    // the sound's (a preset loaded keeps them)
+    l.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "cap_len", 1 }, "Capture Length",
+                                                       juce::StringArray { "FREE", "1 BAR", "2 BARS", "4 BARS" }, 0,
+                                                       juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+    l.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "cap_norm", 1 }, "Capture Auto Level", true));
     // the effects' slots (the FX view): FX A and FX B in series (A > B) or in parallel (A + B), an AUX (a send, the
     // effect wet only, a return), the loop's insert; each slot picks an effect - one effect in one slot at a time, its
     // parameters its own (the user, 21/10). The lists are not automatable: an effect added to them later never moves
@@ -646,6 +660,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout UsinaProcessor::createLayout
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_on", 1 }, "Vapor", true));
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_freeze", 1 }, "Vapor Freeze", false));
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_reverse", 1 }, "Vapor Reverse", false));
+        // LIMIT (fx/Vapor.h, 28/10): the fed-back signal held near the input's level; off by default (the user)
+        g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_limit", 1 }, "Vapor Limit", false));
         juce::StringArray modes, qualities;
         for (int m = 0; m < usina::fx::Vapor::kNumModes; ++m) modes.add(usina::fx::Vapor::modeName(m));
         for (int q = 0; q < usina::fx::Vapor::kNumQualities; ++q) qualities.add(usina::fx::Vapor::qualityName(q));
@@ -880,6 +896,8 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
                     ppq = *q;
                     ppqValid = true;
                 }
+                if (const auto ts = pos->getTimeSignature(); ts && ts->numerator > 0 && ts->denominator > 0)
+                    tpBarBeats = ts->numerator * 4.0 / ts->denominator;
                 playing = pos->getIsPlaying();
             }
         engine.setTransport(bpm, ppq, playing);
@@ -1189,6 +1207,7 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
         for (auto* v : f) *v = juce::jlimit(0.0f, 1.0f, *v);
         k.freeze = pVap[kVapFreeze]->load() > 0.5f;
         k.reverse = pVap[kVapReverse]->load() > 0.5f;
+        k.limit = pVap[kVapLimit]->load() > 0.5f;
         k.mode = juce::jlimit(0, usina::fx::Vapor::kNumModes - 1, juce::roundToInt(pVap[kVapMode]->load()));
         k.quality = juce::jlimit(0, usina::fx::Vapor::kNumQualities - 1, juce::roundToInt(pVap[kVapQuality]->load()));
         const bool on = pVap[kVapOn]->load() > 0.5f;
@@ -1249,14 +1268,34 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     }
     const float* inL = inCh > 0 ? input.getReadPointer(0) : nullptr;
     const float* inR = inCh > 1 ? input.getReadPointer(1) : inL;
+    int capFrom = 0;                                     // (where in this block the capture starts)
+    if (capWait.load(std::memory_order_acquire)) {       // armed with a LENGTH: from the host's next bar (or at once)
+        const double perBeat = 60.0 / juce::jmax(20.0, tpBpmNow) * getSampleRate();
+        bool go = true;
+        if (tpPlayingNow && tpPpqValidNow) {
+            const double nextBar = std::ceil(tpPpqNow / tpBarBeats - 1e-9) * tpBarBeats;
+            const int at = (int)std::ceil((nextBar - tpPpqNow) * perBeat - 1e-6);   // (the bar's first sample)
+            go = at < n;
+            capFrom = juce::jlimit(0, juce::jmax(0, n - 1), at);
+        }
+        if (go) {
+            const int bars = capBars.load(std::memory_order_relaxed);
+            capTarget.store(juce::jmin((int)capBuf.size(), (int)std::lround(bars * tpBarBeats * perBeat)),
+                            std::memory_order_relaxed);
+            capPos.store(0, std::memory_order_relaxed);
+            capWait.store(false, std::memory_order_relaxed);
+            capArmed.store(true, std::memory_order_release);
+        }
+    }
     if (capArmed.load(std::memory_order_acquire) && inL != nullptr) {   // SAMPLE's capture: the input after IN GAIN,
         const float g = 0.5f * juce::Decibels::decibelsToGain(pInGain->load());   // mono (before IN MIX)
         int p = capPos.load(std::memory_order_relaxed);
-        const int room = juce::jmin(n, (int)capBuf.size() - p);
-        for (int i = 0; i < room; ++i) capBuf[(size_t)(p + i)] = (inL[i] + inR[i]) * g;
+        const int end = juce::jmin((int)capBuf.size(), capTarget.load(std::memory_order_relaxed));
+        const int room = juce::jmin(n - capFrom, end - p);
+        for (int i = 0; i < room; ++i) capBuf[(size_t)(p + i)] = (inL[capFrom + i] + inR[capFrom + i]) * g;
         p += juce::jmax(0, room);
         capPos.store(p, std::memory_order_release);
-        if (p >= (int)capBuf.size()) {
+        if (p >= end) {                                  // (full, or its bars done: stopped by itself)
             capFull.store(true, std::memory_order_release);
             capArmed.store(false, std::memory_order_release);
         }
@@ -1333,6 +1372,10 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
                     busDist[b] |= kinds[b][s] == kFxDistort && distort.active() && distOnNow;
                 }
         const bool distOver = usina::fx::Distort::oversampled(distNow.mode);
+        // what the chain delays the voices by, for the host (28/10; the message thread reports it - timerCallback): in
+        // series the two buses' sum, in parallel the later one (the other padded to it); the AUX is wet only
+        fxChainLatency.store(juce::roundToInt(pFxRoute->load()) == 1 ? std::max(busLat[0], busLat[1]) : busLat[0] + busLat[1],
+                             std::memory_order_relaxed);
         // a bus on l / r, in place: its effects in order, then its MIX against its input (the dry) made as its effects
         // leave a signal (fx/BusMatch.h: a MIX below 100 % with a plain dry combed). The dry's match runs always, so
         // what comes finds its past there. At MIX 100 % and on, nothing mixed
@@ -1340,9 +1383,19 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
             auto& g = busGain[(size_t)b];
             std::copy(l, l + m, fxDryL.data());
             std::copy(r, r + m, fxDryR.data());
-            matchDry[(size_t)b].process(fxDryL.data(), fxDryR.data(), m, busLat[b], busDist[b] != 0, distOver, distPlaced);
-            if (!busRuns[b]) return;
+            if (!busRuns[b]) {
+                matchDry[(size_t)b].process(fxDryL.data(), fxDryR.data(), m, busLat[b], busDist[b] != 0, distOver, distPlaced);
+                return;
+            }
             runBus(kinds[b], l, r, m, false);
+            // (the TEXTURE in this bus: its dry twin - the same converters as its signal, 28/10 - after it ran, so a
+            // texture just switched on and its twin start together; the rest of the bus's lateness a plain delay)
+            int lat = busLat[b];
+            bool hasTexture = false;
+            for (int s = 0; s < kFxSlotsPerBus; ++s) hasTexture = hasTexture || kinds[b][s] == kFxTexture;
+            if (hasTexture && texture.dryTwin(fxDryL.data(), fxDryR.data(), m))
+                lat = std::max(0, lat - texture.latencySamples());
+            matchDry[(size_t)b].process(fxDryL.data(), fxDryR.data(), m, lat, busDist[b] != 0, distOver, distPlaced);
             if (!g.isSmoothing() && g.getTargetValue() == 1.0f) return;
             for (int i = 0; i < m; ++i) {
                 const float w = g.getNextValue();
@@ -1538,35 +1591,39 @@ bool UsinaProcessor::sampleLoad(const juce::File& f)
     const int ch = (int)juce::jmax(1u, reader->numChannels);
     juce::AudioBuffer<float> buf(ch, len);
     if (!reader->read(&buf, 0, len, 0, true, true)) return false;
-    auto s = std::make_unique<usina::fm::SampleData>();
-    s->rate = reader->sampleRate;
-    s->data.assign((size_t)len, 0.0f);                   // (mono: the channels' average)
+    std::vector<float> data((size_t)len, 0.0f);          // (mono: the channels' average)
     for (int c = 0; c < ch; ++c) {
         const float* x = buf.getReadPointer(c);
-        for (int i = 0; i < len; ++i) s->data[(size_t)i] += x[i] / (float)ch;
+        for (int i = 0; i < len; ++i) data[(size_t)i] += x[i] / (float)ch;
     }
-    sampleTake(std::move(s));
-    samplePath = f.getFullPathName();
-    sampleMissing = false;
+    slotStore(slotNow, std::move(data), reader->sampleRate, f.getFullPathName(), false);
     return true;
 }
 
 void UsinaProcessor::sampleClear()
 {
-    sampleTake(nullptr);
-    samplePath.clear();
-    sampleMissing = false;
+    slotStore(slotNow, {}, 0.0, {}, false);
 }
 
 void UsinaProcessor::sampleCapture(bool on)
 {
     if (on) {
-        if (capArmed.load() || capBuf.empty()) return;
+        if (capArmed.load() || capWait.load() || capBuf.empty()) return;
         capFull.store(false);
         capPos.store(0);
+        capSlot = slotNow;                               // (the take goes where it was asked for, whatever comes after)
         capWasArmed = true;
-        capArmed.store(true, std::memory_order_release);
+        const int len = pCapLen != nullptr ? juce::jlimit(0, 3, (int)std::lround(pCapLen->load())) : 0;
+        const int bars = len == 0 ? 0 : len == 1 ? 1 : len == 2 ? 2 : 4;
+        capBars.store(bars);
+        if (bars == 0) {
+            capTarget.store((int)capBuf.size());
+            capArmed.store(true, std::memory_order_release);
+        } else {
+            capWait.store(true, std::memory_order_release);   // (the audio thread starts it on the bar)
+        }
     } else {
+        if (capWait.exchange(false)) { capWasArmed = false; return; }   // (still waiting: nothing taken, cancelled)
         capArmed.store(false, std::memory_order_release);
     }
 }
@@ -1580,6 +1637,14 @@ void UsinaProcessor::captureFinish()
     auto s = std::make_unique<usina::fm::SampleData>();
     s->rate = capRate;
     s->data.assign(capBuf.begin(), capBuf.begin() + n);
+    if (pCapNorm == nullptr || pCapNorm->load() > 0.5f) {   // AUTO LEVEL: the peak to -3 dBFS, at most +30 dB
+        float peak = 0.0f;
+        for (float x : s->data) peak = juce::jmax(peak, std::fabs(x));
+        if (peak > 1e-6f) {
+            const float g = juce::jmin(juce::Decibels::decibelsToGain(-3.0f) / peak, juce::Decibels::decibelsToGain(30.0f));
+            for (float& x : s->data) x *= g;
+        }
+    }
     const auto dir = sampleFolder();
     dir.createDirectory();
     const auto file = dir.getNonexistentChildFile("CAPTURA " + juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S"), ".wav");
@@ -1592,9 +1657,35 @@ void UsinaProcessor::captureFinish()
             written = writer->writeFromFloatArrays(chans, 1, n);
         }
     }
-    sampleTake(std::move(s));
-    samplePath = written ? file.getFullPathName() : juce::String();
-    sampleMissing = false;
+    slotStore(capSlot, std::move(s->data), capRate, written ? file.getFullPathName() : juce::String(), false);
+}
+
+// a recording into slot i (the current one: handed to the engine at once)
+void UsinaProcessor::slotStore(int i, std::vector<float> data, double rate, const juce::String& path, bool missing)
+{
+    auto& sl = slots[(size_t)juce::jlimit(0, kSampleSlots - 1, i)];
+    sl.data = std::move(data);
+    sl.rate = rate;
+    sl.path = path;
+    sl.missing = missing;
+    if (i == slotNow) sampleSelectSlot(slotNow);
+}
+
+// A..D: the engine plays slot i from now (a copy: the slot keeps its own for the next switch)
+void UsinaProcessor::sampleSelectSlot(int i)
+{
+    slotNow = juce::jlimit(0, kSampleSlots - 1, i);
+    const auto& sl = slots[(size_t)slotNow];
+    if (sl.data.empty()) {
+        sampleTake(nullptr);
+    } else {
+        auto s = std::make_unique<usina::fm::SampleData>();
+        s->rate = sl.rate;
+        s->data = sl.data;
+        sampleTake(std::move(s));
+    }
+    samplePath = sl.path;
+    sampleMissing = sl.missing;
 }
 
 const char* UsinaProcessor::fxBusOnId(int bus)
@@ -1767,6 +1858,10 @@ juce::ValueTree UsinaProcessor::stateTree()
     st.appendChild(playTree.createCopy(), nullptr);    // the PLAY view's (27/10): snapshots, XY, layout
     st.setProperty("irFile", irPath, nullptr);         // the IR's file, by its path (v6; the file itself is the user's)
     st.setProperty("sampleFile", samplePath, nullptr); // SAMPLE's recording, by its path (27/10; a capture is a file too)
+    juce::StringArray files;                           // the four (28/10): A..D by their paths, and which one plays
+    for (const auto& sl : slots) files.add(sl.path);
+    st.setProperty("sampleFiles", files.joinIntoString("\n"), nullptr);
+    st.setProperty("sampleSlot", slotNow, nullptr);
     return st;
 }
 
@@ -1873,8 +1968,10 @@ bool UsinaProcessor::importMappings(const juce::File& file)
 namespace {
 // the rig's parameters (a user preset neither saves nor loads them: they stay as the session has them)
 const char* const kRigIds[] = { "in_gain", "in_mix", "in_fx", "feedback", "fb_time", "level", "ceiling", "oversampling",
-                                "seq_bpm", "seq_play", "bend_range", "mpe_mode", "mpe_bend_range" };
-const char* const kRigChildren[] = { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD", "CABINE" };
+                                "seq_bpm", "seq_play", "bend_range", "mpe_mode", "mpe_bend_range", "cap_len", "cap_norm" };
+// (PLAY, 28/10: the performance surface - snapshots, XY, the keys' layout - is the player's, not the sound's: a preset
+// neither carries it nor replaces it; found by the web's import test, which refused presets saved since 27/10)
+const char* const kRigChildren[] = { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD", "CABINE", "PLAY" };
 bool isRigParam(const juce::ValueTree& c)
 {
     for (const char* id : kRigIds)
@@ -2054,15 +2151,23 @@ void UsinaProcessor::applyStateTree(juce::ValueTree st)
             const juce::String irFile = st.getProperty("irFile").toString();   // (the IR's file; before: none)
             st.removeProperty("irFile", nullptr);
             const juce::String sampleFile = st.getProperty("sampleFile").toString();   // (SAMPLE's; before: none)
-            st.removeProperty("sampleFile", nullptr);
-            if (sampleFile.isEmpty()) {
-                sampleClear();
-            } else if (sampleFile != samplePath) {      // (a file that moved or went: kept named, marked missing)
-                const bool ok = juce::File::isAbsolutePath(sampleFile) && sampleLoad(juce::File(sampleFile));
-                if (!ok) sampleClear();
-                samplePath = sampleFile;
-                sampleMissing = !ok;
+            // the four (28/10; before: the one, as A)
+            juce::StringArray files;
+            files.addLines(st.getProperty("sampleFiles", sampleFile).toString());
+            const int slotWanted = juce::jlimit(0, kSampleSlots - 1, (int)st.getProperty("sampleSlot", 0));
+            for (const char* p : { "sampleFile", "sampleFiles", "sampleSlot" }) st.removeProperty(p, nullptr);
+            for (int i = 0; i < kSampleSlots; ++i) {
+                const juce::String f = i < files.size() ? files[i] : juce::String();
+                if (f == slots[(size_t)i].path && !slots[(size_t)i].missing) continue;   // (the same file: kept)
+                slotNow = i;                             // (loaded into its own slot; the one that plays chosen after)
+                if (f.isEmpty()) {
+                    slotStore(i, {}, 0.0, {}, false);
+                } else {                                 // (a file that moved or went: kept named, marked missing)
+                    const bool ok = juce::File::isAbsolutePath(f) && sampleLoad(juce::File(f));
+                    if (!ok) slotStore(i, {}, 0.0, f, true);
+                }
             }
+            sampleSelectSlot(slotWanted);
             params.replaceState(st);
             if (irFile.isEmpty()) {
                 irClear();

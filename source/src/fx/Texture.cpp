@@ -77,6 +77,7 @@ struct RatePath {
     double rate = 48000.0;
     bool direct = true;
     usina::Resampler down, up;                           // host -> module, module -> host
+    usina::Resampler twinDown, twinUp;                   // (the dry's twin: the same pair, no module between)
     int prefill = 0;                                     // module samples of silence ahead of the output
     double latencyHost = 0.0;                            // (whole host samples)
     double upStart = 0.0;                                // the way back's first position (module samples, <= 0)
@@ -103,6 +104,7 @@ struct Texture::Impl {
     std::vector<uint8_t> gateRing = std::vector<uint8_t>(1 << 16);
     int64_t hostWritten = 0, moduleIn = 0;
     std::vector<float> tl = std::vector<float>(4 * kChunk), tr = std::vector<float>(4 * kChunk);
+    std::vector<float> twl = std::vector<float>(4 * kChunk), twr = std::vector<float>(4 * kChunk);   // (the twin's)
 
     bool active = false;
     float fade = 0.0f, fadeOnOff = 0.0f, fadeSwitch = 0.0f;
@@ -123,14 +125,20 @@ struct Texture::Impl {
                 p.prefill = blk;
                 p.latencyHost = blk;
             } else {
-                p.down.prepare(fs, p.rate, kChunk);
+                // minimum phase (28/10; the user: the delay when playing - dsp/Resampler.h): no half-width to wait,
+                // only the twins' small group delays (measured: tests/TextureTest LATENCY)
+                p.down.prepare(fs, p.rate, kChunk, true);
                 const int moduleChunk = (int)std::ceil(kChunk * p.rate / fs) + 2 * blk + 8;
-                p.up.prepare(p.rate, fs, moduleChunk + 4096);
-                // the output must never wait: the converters' half-widths and one block ahead (module samples); the
-                // way back starts a fraction of a sample early so that the whole delay is whole host samples
-                p.prefill = (int)std::ceil(p.up.halfWidth() + blk + p.down.halfWidth() * p.rate / fs) + 2;
-                p.latencyHost = std::ceil(p.prefill * fs / p.rate);
-                p.upStart = p.prefill - p.latencyHost * p.rate / fs;
+                p.up.prepare(p.rate, fs, moduleChunk + 4096, true);
+                p.twinDown.prepare(fs, p.rate, kChunk, true);
+                p.twinUp.prepare(p.rate, fs, moduleChunk + 4096, true);
+                // the output must never wait: the converters' waits and one block ahead (module samples). The signal
+                // is late by more than that by what the converters delay beyond their wait (host samples); the way
+                // back starts a fraction of a sample early so that the whole delay is whole host samples
+                p.prefill = (int)std::ceil(p.up.wait() + blk + p.down.wait() * p.rate / fs) + 2;
+                const double extra = (p.down.delay() - p.down.wait()) + (p.up.delay() - p.up.wait()) * fs / p.rate;
+                p.latencyHost = std::ceil(p.prefill * fs / p.rate + extra);
+                p.upStart = p.prefill - (p.latencyHost - extra) * p.rate / fs;
             }
         }
         const int cap = (int)std::ceil(kChunk * 48000.0 / std::min(fs, 24000.0)) + 4096;
@@ -173,10 +181,13 @@ struct Texture::Impl {
         } else {
             path->down.reset();
             path->up.reset(path->upStart);
+            path->twinDown.reset();
+            path->twinUp.reset(path->upStart);
             std::fill(tl.begin(), tl.end(), 0.0f);
             for (int left = path->prefill; left > 0; left -= (int)tl.size()) {
                 const int m = std::min(left, (int)tl.size());
                 path->up.push(tl.data(), tl.data(), m);
+                path->twinUp.push(tl.data(), tl.data(), m);
             }
         }
     }
@@ -358,5 +369,28 @@ void Texture::process(float* l, float* r, int n, const Knobs& k, const bool* gat
 bool Texture::active() const { return impl->active; }
 
 int Texture::latencySamples() const { return (int)std::lround(impl->path->latencyHost); }
+
+// the dry's twin (28/10): what a bus mixes its dry with must be filtered as the texture's own path filters (the
+// converters' minimum-phase twins are not a plain delay up the band: measured, a 50 % MIX lost 2-3 dB at 9 kHz).
+// The dry goes down and up through the same pair, the module's place left empty, aligned as the main path: its
+// output is the dry exactly as the texture's DRY/WET at 0 gives it, latencySamples() later (the module's gain aside)
+bool Texture::dryTwin(float* l, float* r, int n)
+{
+    auto& im = *impl;
+    if (!im.active || im.path->direct) return false;     // (the same rate: the texture is a plain delay, matched as one)
+    auto& p = *im.path;
+    for (int i = 0; i < n;) {
+        const int c = std::min(n - i, kChunk);
+        p.twinDown.push(l + i, r + i, c);
+        const int a = std::min(p.twinDown.available(), (int)im.twl.size());
+        p.twinDown.pull(im.twl.data(), im.twr.data(), a);
+        p.twinUp.push(im.twl.data(), im.twr.data(), a);
+        const int got = std::min(p.twinUp.available(), c);
+        p.twinUp.pull(l + i, r + i, got);
+        for (int j = got; j < c; ++j) l[i + j] = r[i + j] = 0.0f;   // (never: the lead covers it)
+        i += c;
+    }
+    return true;
+}
 
 } // namespace usina::fx

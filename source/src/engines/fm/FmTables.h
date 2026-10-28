@@ -30,7 +30,7 @@ enum Wave { SIN, SIN12, SIN8, TRI, SAW, SAWHD, SQR, SQRHD, ASAW3, ASQR3, ATRI3, 
             NBROWN, NGREY, NCLIP, NRAMP };
 inline bool isNoiseWave(int w) { return (w >= NSH && w <= NBLUE) || w >= NBROWN; }
 constexpr int kChipWaves = 6;                    // HALFSIN .. LOGSAW
-enum Mode { FM, RING, FILTER, FILTFM, FOLD, EFFECT, BYPASS, MUTE, MODAL, CHAOS, STOCH, MACRO, SAMPLE };   // (MODAL..: Usina's)
+enum Mode { FM, RING, FILTER, FILTFM, FOLD, EFFECT, BYPASS, MUTE, MODAL, CHAOS, STOCH, MACRO, SAMPLE, UNISON };   // (MODAL..: Usina's)
 
 struct Tables {
     std::array<std::array<float, kTableN + 1>, kNoise0> wave {};          // SAW HD, SQR HD hold the plain ones

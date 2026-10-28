@@ -64,6 +64,9 @@ struct Parameters {
     float phase_randomization;
     float warp;
   } spectral;
+  // (USINA: LIMIT - the fed-back signal's power ceiling; 0 off. Last: the module fills this struct by position
+  // in places - a member added in the middle shifted the others: the REVERB mode broke, 28/10)
+  float usina_fb_ceiling;
 };
 
 }  // namespace usina_clouds

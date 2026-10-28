@@ -185,6 +185,19 @@ int main()
         check(a > -50.0 && std::fabs(a - b) < 3.0, "BOW: held, it sustains (dB change 1.0 -> 1.8 s)", a - b, "|x| < 3, heard");
         const double f = peakNear(x, (size_t)(1.0 * kFs), 32768, 220.0);
         check(std::fabs(cents(f, 220.0)) < 15.0, "BOW: it speaks at its first mode (cents)", cents(f, 220.0), "|x| < 15");
+        // let go, the bow lifts: the object rings out and its voice ends (28/10: it used to sing on by itself)
+        auto g = object(MS_BOWL, MM_GLASS);
+        g["OP1.STRIKE"] = 0;
+        g["OP1.EXCITER"] = MX_BOW;
+        g["OP1.D"] = 20;
+        g["OP1.REL"] = 10;
+        int voices = -1;
+        const auto r = render(g, 9.0, 1.5, &voices);
+        std::printf("      (bowed glass bowl, let go at 1.5 s: %.1f dBFS at 1.0 s, %.1f at 2.5 s, %.1f at 4.5 s)\n",
+                    rmsDb(r, 0.8, 1.2), rmsDb(r, 2.5, 3.0), rmsDb(r, 4.5, 5.0));
+        const double fall = rmsDb(r, 2.5, 3.0) - rmsDb(r, 4.5, 5.0);
+        check(fall > 20.0, "BOW let go: it rings out (dB fallen 2.5 -> 4.5 s)", fall, "> 20");
+        check(voices == 0, "BOW let go: the voice ends (voices at 9 s)", voices, "0");
     }
     {
         // BLOW: a glass bowl breathed into: tonal (its first mode well over the noise around it)
@@ -223,6 +236,47 @@ int main()
         };
         const double d = highs(100) - highs(0);
         check(d > 6.0, "RATTLE 100: the highs of a strike (dB more)", d, "> 6");
+    }
+    {
+        // DAMP (28/10): held, nothing changes (bit for bit); let go at 0.3 s, a hand stops the ring
+        auto v = object(MS_BAR, MM_STEEL);
+        const auto held0 = render(v, 0.6);
+        v["OP1.DAMP"] = 100;
+        const auto held100 = render(v, 0.6);
+        double diff = 0.0;
+        for (size_t i = 0; i < held0.size(); ++i) diff = std::max(diff, (double)std::fabs(held0[i] - held100[i]));
+        check(diff == 0.0, "DAMP 100, key held: as without it (max diff)", diff, "0");
+        const auto damped = render(v, 0.6, 0.3);
+        v["OP1.DAMP"] = 0;
+        const auto ringing = render(v, 0.6, 0.3);
+        const double d = rmsDb(ringing, 0.45, 0.55) - rmsDb(damped, 0.45, 0.55);
+        check(d > 40.0, "DAMP 100, let go: 0.15 s later (dB under the ring)", d, "> 40");
+        v["OP1.DAMP"] = 30;
+        const double light = rmsDb(ringing, 0.45, 0.55) - rmsDb(render(v, 0.6, 0.3), 0.45, 0.55);
+        check(light > 3.0 && light < 25.0, "DAMP 30: a light touch (dB under the ring)", light, "3 .. 25");
+    }
+    {
+        // DROP (28/10): it falls and bounces - impacts ever sooner (the gaps shrink by the restitution) and softer
+        auto v = object(MS_BAR, MM_HARDWOOD);
+        v["OP1.EXCITER"] = MX_DROP;
+        v["OP1.D"] = 15;                                 // (a short ring: each impact heard on its own)
+        const auto x = render(v, 1.5);
+        std::vector<double> onsets;                      // (1 ms windows of the signal's slope: a jump of 12 dB)
+        const int w = (int)(0.001 * kFs);
+        double prev = 1e-20;
+        for (int i = w; i + w < (int)x.size(); i += w) {
+            double e = 0.0;
+            for (int j = i; j < i + w; ++j) e += (double)(x[(size_t)j] - x[(size_t)j - 1]) * (x[(size_t)j] - x[(size_t)j - 1]);
+            if (e > 16.0 * prev && e > 1e-9 && (onsets.empty() || i / kFs - onsets.back() > 0.03)) onsets.push_back(i / kFs);
+            prev = std::max(e, 1e-20);
+        }
+        bool shrinking = onsets.size() >= 4;
+        for (size_t k = 2; k < onsets.size() && k < 5; ++k)
+            shrinking = shrinking && onsets[k] - onsets[k - 1] < onsets[k - 1] - onsets[k - 2];
+        std::printf("      (DROP onsets:");
+        for (size_t k = 0; k < onsets.size() && k < 8; ++k) std::printf(" %.3f", onsets[k]);
+        std::printf(" s)\n");
+        check(shrinking, "DROP: 4+ impacts, the gaps shrinking (impacts)", (double)onsets.size(), ">= 4, shrinking");
     }
     {
         // the bank at 2 x the host's when oversampled (8 x: a step every 4 samples): the same object as at 1 x - its

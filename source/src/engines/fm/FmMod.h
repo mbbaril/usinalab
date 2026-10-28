@@ -122,6 +122,7 @@ inline bool isModulatable(int idx)
         if (x >= XV_L1SYNC && x < XV_EV1MODE) { const int l = (x - XV_L1SYNC) % kLfoXValues; return l == 1 || l == 3; }
         if (x >= XV_EV1MODE && x < XV_O1MAT) return (x - XV_EV1MODE) % kEnvXValues == 1;
         if (x == XV_LPGDECAY || x == XV_LPGCOLOR) return true;   // (the LPG's: not its MODE, a list)
+        if (x >= XV_O1DAMP && x < XV_O1PWM + 6) return true;      // (MODAL's DAMP, UNISON's SUB and PWM)
     }
     // MODAL's continuous values (FmModal.h): BRIGHT, STIFF, POSITION, IRREG, STRIKE, HARDNESS, PRESSURE, TENSION,
     // RATTLE (not MATERIAL nor EXCITER, lists; nor DENSITY, a count)

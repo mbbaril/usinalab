@@ -196,11 +196,14 @@ struct ModalSettings {
     double pressure = 0.5;      // 0..1: the bow's pressure, the breath's turbulence, the scrape's rate
     double tension = 0.0;       // 0..1: the pitch rising with the amplitude
     double rattle = 0.0;        // 0..1: a contact buzzing on the peaks
+    double damp = 0.0;          // 0..1: a hand on the object (28/10; the engine sets it once the key is let go)
 };
-enum ModalExciter { MX_STRIKE, MX_BOW, MX_BLOW, MX_SCRAPE, kModalExciters };
+// DROP (28/10): the object falls and bounces - each impact the mallet's, the next one sooner and softer by the
+// restitution (PRESSURE: 0.45 dead .. 0.9 lively), the first fall's time from the velocity (the height)
+enum ModalExciter { MX_STRIKE, MX_BOW, MX_BLOW, MX_SCRAPE, MX_DROP, kModalExciters };
 inline const char* modalExciterName(int e)
 {
-    static const char* const N[kModalExciters] = { "STRIKE", "BOW", "BLOW", "SCRAPE" };
+    static const char* const N[kModalExciters] = { "STRIKE", "BOW", "BLOW", "SCRAPE", "DROP" };
     return N[std::clamp(e, 0, kModalExciters - 1)];
 }
 
@@ -210,6 +213,8 @@ struct ModalBank {
     int n = 0;                                        // modes in use (below 20 kHz and the rate's 0.45)
     double norm = 1.0, lp = 0.0, lpK = 1.0, level = 0.0, levelK = 0.0;
     double strikeLeft = 0.0, strikeLen = 1.0, strikeAmp = 0.0;   // the mallet's pulse: samples left, length, height
+    double dropAmp = 0.0, dropNext = 0.0, dropGap = 0.0, dropR = 0.7;   // DROP: the next impact's height, the
+                                                                         // samples to it, the gap, the restitution
     uint32_t seed = 1;
     // stage 2: the exciter, its pressure; the scrape's chance of a grain a sample; the buzz's threshold and depth
     int exciter = MX_STRIKE;
@@ -228,6 +233,7 @@ struct ModalBank {
         ic2.fill(0.0);
         lp = level = last = 0.0;
         strikeLeft = 0.0;
+        dropAmp = 0.0;
         cnt = 0;
         acc = accEnv = held = 0.0;
     }
@@ -244,6 +250,14 @@ struct ModalBank {
         strikeLen = std::max(1.0, fs * (0.0001 + 0.008 * (1.0 - s.hardness) * (1.0 - s.hardness)));
         strikeLeft = strikeLen;
         strikeAmp = s.strike * velocity * 2.0 / strikeLen;
+        dropAmp = 0.0;
+        if (s.exciter == MX_DROP) {                   // the first impact now; the bounces after it
+            dropR = 0.45 + 0.45 * std::clamp(s.pressure, 0.0, 1.0);
+            // (a higher fall: a longer first bounce; every gap after it shorter by the restitution)
+            dropGap = fs * (0.06 + 0.34 * std::clamp(velocity, 0.0, 1.0)) * dropR;
+            dropNext = dropGap;
+            dropAmp = s.strike * velocity * dropR;
+        }
     }
 
     // this control block's modes from the settings; fs the engine's rate, band the audible top (20 kHz); bankDiv the
@@ -285,7 +299,10 @@ struct ModalBank {
             const double f = f1 * r;
             if (f >= top || f <= 0.0) break;                          // (the rest are above: ascending)
             const double eta = mt.eta * std::pow(std::max(f, 20.0) / 1000.0, gamma);
-            const double t60 = std::clamp(kLn1000 / (kPi * f * eta) * s.decay, 0.002, 60.0);
+            double t60 = std::clamp(kLn1000 / (kPi * f * eta) * s.decay, 0.002, 60.0);
+            // DAMP: a hand adds its own loss, the same for every mode - its own T60, exponential in the knob (100:
+            // 20 ms, 50: ~0.3 s, 10: ~2.4 s), so the low end is a light touch and the top a firm grip
+            if (s.damp > 0.0) t60 = 1.0 / (1.0 / t60 + 1.0 / (0.02 * std::pow(200.0, 1.0 - s.damp)));
             const double q = kPi * f * t60 / kLn1000;                // (Q = pi f T60 / ln 1000; for constant eta: 1 / eta)
             const double gg = std::tan(kPi * f / fb), k = 1.0 / q;
             g[(size_t)m] = gg;
@@ -325,6 +342,14 @@ struct ModalBank {
             break;
         default: break;
         }
+        if (dropAmp > 0.0 && (dropNext -= 1.0) <= 0.0) {              // DROP: the next bounce lands
+            strikeLeft = strikeLen;
+            strikeAmp = dropAmp * 2.0 / strikeLen;
+            dropGap *= dropR * (1.0 + 0.15 * noise());                 // (a tumbling object: never quite regular)
+            dropAmp *= dropR * (1.0 + 0.2 * noise());
+            dropNext = dropGap;
+            if (dropGap < strikeLen * 2.0 || dropAmp < 1e-3) dropAmp = 0.0;   // (it comes to rest)
+        }
         if (strikeLeft > 0.0) {                                       // the mallet: a raised cosine
             excite += strikeAmp * 0.5 * (1.0 - std::cos(2.0 * kPi * (strikeLen - strikeLeft) / strikeLen));
             strikeLeft -= 1.0;
@@ -342,9 +367,13 @@ struct ModalBank {
             // stick-slip: the bow moves at its speed (the envelope, plus what comes in), the object at its own (its
             // last sound: the modes are band-passes, their output a velocity); the force is the friction curve of
             // the difference - near 0 the bow grips, past it it slips (the bowed-string table of STK, as a reference:
-            // x (|x| slope + 0.75)^-4). More PRESSURE: a firmer grip, a stronger push
+            // x (|x| slope + 0.75)^-4). More PRESSURE: a firmer grip, a stronger push.
+            // The bow's contact follows its speed near zero (28/10, found by the preset forge): a still bow pressed on
+            // the object turned its own sound back into it, and it sang on by itself after the key was let go - a
+            // stuck voice. Bowing (the envelope at 0.05 and up) is exactly as before; let go, the bow lifts
             const double dv = envB * 0.5 + v0 - last, slope = 5.0 - 4.0 * pressure;
-            v0 = dv * std::min(1.0, std::pow(std::fabs(dv) * slope + 0.75, -4.0)) * (0.5 + pressure);
+            const double contact = std::min(1.0, envB * 20.0);
+            v0 = dv * std::min(1.0, std::pow(std::fabs(dv) * slope + 0.75, -4.0)) * (0.5 + pressure) * contact;
         }
         double y = 0.0;
         for (int i = 0; i < n; ++i) {                                 // (Zavalishin's TPT state-variable band-pass)
