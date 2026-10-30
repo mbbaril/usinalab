@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
-// Read the actual JUCE saveUserPreset XML. This imports a sound, never guesses at a whole host session.
+// Copyright (C) 2026 Mario Brandalise Baril
+// Read the actual plugin saveUserPreset XML. This imports a sound, never guesses at a whole host session.
 const RIG = new Set(['in_gain', 'in_mix', 'in_fx', 'feedback', 'fb_time', 'level', 'ceiling', 'oversampling', 'seq_bpm', 'seq_play', 'bend_range', 'mpe_mode', 'mpe_bend_range']);
 const IGNORED_PARAMETERS = new Set(['seq_on', 'ir_on', 'ir_mix', 'ir_lowcut', 'ir_highcut', 'ir_out']);
-const IGNORED_CHILDREN = new Set(['SEQ', 'CTRLS', 'CCMAP', 'CABACT', 'LAUNCHPAD', 'CABINE']);
+const IGNORED_CHILDREN = new Set(['SEQ', 'CTRLS', 'CCMAP', 'CABACT', 'PADGRID', 'LAUNCHPAD', 'CABINE']);
 const DEFAULT_FUNCTIONS = [[[0, 1, -.6], [1, 0, 0]], [[0, 0, 0], [.5, 1, 0], [1, 0, 0]], [[0, 0, .3], [1, 1, 0]]];
 const elements = node => Array.from(node.childNodes || []).filter(n => n.nodeType === 1);
 const cloneFunctions = () => DEFAULT_FUNCTIONS.map(f => f.map(p => [...p]));
@@ -63,7 +63,7 @@ export function parseVstSound(text, metadata, Parser = globalThis.DOMParser) {
           plan.functions[index] = points;
         });
       } else if (child.tagName === 'PLAY') {
-        // (the plugin's presets saved 27..28/10 carried the PLAY view: the player's surface, not the sound - ignored)
+        // Ignore PLAY state when importing sound-only presets.
       } else blocked(`Seção de som não suportada: ${child.tagName.slice(0, 80)}.`);
     }
   }
@@ -73,7 +73,7 @@ export function parseVstSound(text, metadata, Parser = globalThis.DOMParser) {
   if (irPlaced && (valueOf('ir_on') ?? 1) > .5) blocked('O som usa convolução IR em um slot. Essa função ainda não está portada.');
   if (irPlaced && (valueOf('ir_on') ?? 1) <= .5) plan.notices.push('Há um slot IR desligado; ele permanecerá sem processamento.');
   if (sections.has('SEQ')) plan.notices.push('A sequência do arquivo não será importada; suas pistas atuais serão preservadas e paradas.');
-  if ([...sections].some(s => ['CTRLS', 'CCMAP', 'CABACT', 'LAUNCHPAD', 'CABINE'].includes(s))) plan.notices.push('Mapas MIDI e configurações de performance do arquivo não serão importados.');
+  if ([...sections].some(s => ['CTRLS', 'CCMAP', 'CABACT', 'PADGRID', 'LAUNCHPAD', 'CABINE'].includes(s))) plan.notices.push('Mapas MIDI e configurações de performance do arquivo não serão importados.');
   plan.notices.push('Volume, entrada, qualidade e mapas MIDI atuais serão preservados. A realimentação volta a zero.');
   return plan;
 }

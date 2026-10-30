@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - the EFFECT mode's 17 effects: the operator's input + OSCMIX x its oscillator through one of them,
-// its frequency the operator's pitch moved by FREQ (E as half semitones, as FILTER's CUTOFF). Ported from the CALDERA
-// firmware (usina16 opx_core.c opx_fx_run, opx_fx_modes, opx_fx_dense, opx_fx_disp), formula for formula, in floating
-// point; the per-sample constants the firmware set at its 44117.647 Hz are made again for the host's rate (the one-poles
-// by their time constants, the delay lines by their length in seconds), so a patch sounds the same at any rate.
+// Usina FM engine: 17 operator effects. Input is mixed with OSCMIX times the
+// oscillator; FREQ offsets the operator pitch in half-semitone units.
+// Coefficients use time constants and delay lengths in seconds to preserve
+// the reference response at different sample rates (reference: 44117.647 Hz).
 //   PEAK EQ   a bell (an SVF's band, k 0.7) at FREQ, GAIN F +-18 dB         SHELV EQ  LOW (E / 2), HIGH (F) +-18 dB
 //   PHASER    three TPT all-passes at FREQ, FB F (-0.95 .. +0.95)          RING      x a sine at FREQ, MIX F
 //   COMB      y = x + FB y[-period], out y (1 - |FB|)                       DIST, DRIVE  tanh at 1..100 / 1..10, LOW F

@@ -2,7 +2,7 @@
 // Usina FM engine - the MODAL operator mode: the operator as a physical object (docs/FISICA.md). A bank of up to 64
 // resonant modes, each a band-pass state-variable filter (the modal-resonator idea of Emilie Gillet's MIT-licensed
 // modules: THIRD_PARTY.md, "ideas"; this bank is written here), its frequencies, decays and loudness set by physics:
-//   STRUCTURE  the shape, which fixes the modes' frequency ratios (a string's harmonics, a free bar's 1 : 2.756 :
+//   STRUCTURE  the shape, which fixes the modes' frequency ratios (a string's harmonics, a free bar's 1: 2.756:
 //              5.404, a membrane's Bessel zeros, a bell's hum-prime-tierce-quint-nominal ...)
 //   MATERIAL   how it loses energy: a loss factor eta, each mode decaying in T60 = ln(1000) / (pi f eta(f)), with
 //              eta(f) = eta0 (f / 1 kHz)^gamma (a metal's highs die as its lows do; wood's, rubber's much faster),
@@ -80,7 +80,7 @@ struct ModalTable {
 namespace detail {
 // libc++ in Emscripten does not implement the C++ special functions. The orders here are integers;
 // musl's jn evaluates the same J_m, retaining the zero search and its precision (no fitted modal ratios).
-// The Android NDK's libc++ neither (27/10, the native audio engine; the owner authorized this line): its libm's jn,
+// The Android NDK's libc++ neither: its libm's jn,
 // the same fdlibm-family evaluation as the WebAssembly's - the app native and the web compute the same modes.
 inline double besselJ(int m, double x)
 {
@@ -142,7 +142,7 @@ inline ModalTable buildModalTable()
         std::sort(z.begin(), z.begin() + c);
         for (int n = 0; n < kModalModes; ++n) put(MS_MEMBRANE, n, z[(size_t)n] / z[0], std::sqrt(z[(size_t)n] / z[0]) * 2.0);
     }
-    // plates (simply supported, sides 1 : a): (m^2 + (n a)^2) over the first; PLATE a = 1.13 (the square's twin
+    // plates (simply supported, sides 1: a): (m^2 + (n a)^2) over the first; PLATE a = 1.13 (the square's twin
     // modes split a little), SHEET a = 1.618 (a long sheet: denser, less regular)
     for (const auto& [s, a] : { std::pair { (int)MS_PLATE, 1.13 }, std::pair { (int)MS_SHEET, 1.618 } }) {
         std::array<double, 400> f {};
@@ -152,7 +152,7 @@ inline ModalTable buildModalTable()
         std::sort(f.begin(), f.begin() + c);
         for (int n = 0; n < kModalModes; ++n) put(s, n, f[(size_t)n] / f[0], std::sqrt(f[(size_t)n] / f[0]) * 1.5);
     }
-    // a box's air (a rectangular cavity, 1 : 1.26 : 1.59): sqrt(l^2 + (m / 1.26)^2 + (n / 1.59)^2), all but 0, 0, 0
+    // a box's air (a rectangular cavity, 1: 1.26: 1.59): sqrt(l^2 + (m / 1.26)^2 + (n / 1.59)^2), all but 0, 0, 0
     {
         std::array<double, 1000> f {};
         int c = 0;
@@ -196,9 +196,10 @@ struct ModalSettings {
     double pressure = 0.5;      // 0..1: the bow's pressure, the breath's turbulence, the scrape's rate
     double tension = 0.0;       // 0..1: the pitch rising with the amplitude
     double rattle = 0.0;        // 0..1: a contact buzzing on the peaks
-    double damp = 0.0;          // 0..1: a hand on the object (28/10; the engine sets it once the key is let go)
+    double damp = 0.0;          // 0..1: a hand on the object after key release
+    double pickup = 0.0;        // 0..1: stereo, stage 2 - a second pickup this far from the first (0: one, mono)
 };
-// DROP (28/10): the object falls and bounces - each impact the mallet's, the next one sooner and softer by the
+// DROP: the object falls and bounces - each impact the mallet's, the next one sooner and softer by the
 // restitution (PRESSURE: 0.45 dead .. 0.9 lively), the first fall's time from the velocity (the height)
 enum ModalExciter { MX_STRIKE, MX_BOW, MX_BLOW, MX_SCRAPE, MX_DROP, kModalExciters };
 inline const char* modalExciterName(int e)
@@ -210,6 +211,9 @@ inline const char* modalExciterName(int e)
 // one MODAL operator's bank, for one voice
 struct ModalBank {
     std::array<double, kModalModes> g {}, a1 {}, a2 {}, a3 {}, amp {}, ic1 {}, ic2 {};
+    std::array<double, kModalModes> amp2 {};             // (stereo, stage 2: the second pickup's loudness per mode)
+    bool two = false;                                    // (two pickups: the side computed)
+    double side = 0.0;                                   // (the second pickup's sound minus the first's, halved)
     int n = 0;                                        // modes in use (below 20 kHz and the rate's 0.45)
     double norm = 1.0, lp = 0.0, lpK = 1.0, level = 0.0, levelK = 0.0;
     double strikeLeft = 0.0, strikeLen = 1.0, strikeAmp = 0.0;   // the mallet's pulse: samples left, length, height
@@ -285,6 +289,10 @@ struct ModalBank {
         rattle = std::clamp(s.rattle, 0.0, 1.0);
         rattleTh = 0.35 * (1.0 - 0.8 * rattle);                        // (the louder the rattle, the sooner it buzzes)
         const double x = 0.02 + 0.96 * std::clamp(s.position, 0.0, 1.0);
+        // the second pickup (stereo, stage 2): up to half the object away, folded back inside it
+        two = s.pickup > 0.0;
+        double x2 = x + 0.5 * std::clamp(s.pickup, 0.0, 1.0);
+        if (x2 > 0.98) x2 = 1.96 - x2;
         int m = 0;
         double sumAmp = 0.0;
         for (int i = 0; i < want; ++i) {
@@ -316,6 +324,10 @@ struct ModalBank {
             const double w = std::fabs(std::sin(kPi * x * tb.index[(size_t)st][(size_t)i])) * (1.0 + 0.3 * irr * u);
             const double droop = div > 1 ? std::sin(kPi * f * div / fs) / (div * std::sin(kPi * f / fs)) : 1.0;
             amp[(size_t)m] = 0.5 * w * div / gg / (droop * droop);
+            if (two) {
+                const double w2 = std::fabs(std::sin(kPi * x2 * tb.index[(size_t)st][(size_t)i])) * (1.0 + 0.3 * irr * u);
+                amp2[(size_t)m] = 0.5 * w2 * div / gg / (droop * droop);
+            }
             sumAmp += w * w;
             ++m;
         }
@@ -368,21 +380,33 @@ struct ModalBank {
             // last sound: the modes are band-passes, their output a velocity); the force is the friction curve of
             // the difference - near 0 the bow grips, past it it slips (the bowed-string table of STK, as a reference:
             // x (|x| slope + 0.75)^-4). More PRESSURE: a firmer grip, a stronger push.
-            // The bow's contact follows its speed near zero (28/10, found by the preset forge): a still bow pressed on
+            // The bow's contact follows its speed near zero: a still bow pressed on
             // the object turned its own sound back into it, and it sang on by itself after the key was let go - a
             // stuck voice. Bowing (the envelope at 0.05 and up) is exactly as before; let go, the bow lifts
             const double dv = envB * 0.5 + v0 - last, slope = 5.0 - 4.0 * pressure;
             const double contact = std::min(1.0, envB * 20.0);
             v0 = dv * std::min(1.0, std::pow(std::fabs(dv) * slope + 0.75, -4.0)) * (0.5 + pressure) * contact;
         }
-        double y = 0.0;
-        for (int i = 0; i < n; ++i) {                                 // (Zavalishin's TPT state-variable band-pass)
-            const double v3 = v0 - ic2[(size_t)i];
-            const double v1 = a1[(size_t)i] * ic1[(size_t)i] + a2[(size_t)i] * v3;
-            const double v2 = ic2[(size_t)i] + a2[(size_t)i] * ic1[(size_t)i] + a3[(size_t)i] * v3;
-            ic1[(size_t)i] = 2.0 * v1 - ic1[(size_t)i];
-            ic2[(size_t)i] = 2.0 * v2 - ic2[(size_t)i];
-            y += amp[(size_t)i] * v1;
+        double y = 0.0, y2 = 0.0;
+        if (!two) {
+            for (int i = 0; i < n; ++i) {                             // (Zavalishin's TPT state-variable band-pass)
+                const double v3 = v0 - ic2[(size_t)i];
+                const double v1 = a1[(size_t)i] * ic1[(size_t)i] + a2[(size_t)i] * v3;
+                const double v2 = ic2[(size_t)i] + a2[(size_t)i] * ic1[(size_t)i] + a3[(size_t)i] * v3;
+                ic1[(size_t)i] = 2.0 * v1 - ic1[(size_t)i];
+                ic2[(size_t)i] = 2.0 * v2 - ic2[(size_t)i];
+                y += amp[(size_t)i] * v1;
+            }
+        } else {                                                      // (the same modes, heard at two places)
+            for (int i = 0; i < n; ++i) {
+                const double v3 = v0 - ic2[(size_t)i];
+                const double v1 = a1[(size_t)i] * ic1[(size_t)i] + a2[(size_t)i] * v3;
+                const double v2 = ic2[(size_t)i] + a2[(size_t)i] * ic1[(size_t)i] + a3[(size_t)i] * v3;
+                ic1[(size_t)i] = 2.0 * v1 - ic1[(size_t)i];
+                ic2[(size_t)i] = 2.0 * v2 - ic2[(size_t)i];
+                y += amp[(size_t)i] * v1;
+                y2 += amp2[(size_t)i] * v1;
+            }
         }
         y *= norm;
         if (!std::isfinite(y)) { clear(); y = 0.0; }
@@ -392,6 +416,12 @@ struct ModalBank {
             if (over > 0.0) y += rattle * over * 4.0 * noise();
         }
         const double out = y / std::sqrt(1.0 + y * y);                // (soft saturation: x / sqrt(1 + x^2))
+        if (two) {                                                    // (the second pickup, saturated the same way)
+            y2 *= norm;
+            side = 0.5 * (y2 / std::sqrt(1.0 + y2 * y2) - out);
+        } else {
+            side = 0.0;
+        }
         level += (std::fabs(out) - level) * levelK;
         held = out;
         return out;

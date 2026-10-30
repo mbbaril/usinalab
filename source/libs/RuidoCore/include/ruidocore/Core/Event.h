@@ -5,12 +5,8 @@
 
 namespace ruidocore {
 
-// Conditional-triggering trig conditions. Only the subset that can be
-// evaluated from a single per-part loop counter is implemented - PRE/PRE-
-// (did THIS step's condition pass last time it was reached) and NEI/NEI-
-// (did the immediately preceding trig fire) both need cross-step history
-// beyond a loop count, and are a deliberate, documented gap rather than a
-// half-faked approximation.
+// Trigger conditions evaluable from the part loop counter.
+// PRE/PRE- and NEI/NEI- require additional cross-step history and are unsupported.
 enum class TrigConditionType {
     Always,      // default - no extra gating beyond probability/enabled
     Ratio,       // fires on occurrence ratioK of every ratioN loops
@@ -35,8 +31,7 @@ struct ParameterLock {
     std::string name;   // e.g. "pitch1", for logging/UI only
 };
 
-// "This step has no note of its own - play the Part's base note"
-// (2026-09-16). See StepEvent::explicitNote and Part::baseNote.
+// Unset notes inherit Part::baseNote; see StepEvent::explicitNote.
 inline constexpr int kNoteUnset = -1;
 
 // A single step in a Part's sequence.
@@ -47,17 +42,8 @@ struct StepEvent {
     // Read it through resolvedNote() (Core/Pattern.h), never directly,
     // unless the question really is "did someone set a note here".
     //
-    // Why unset and not a number (2026-09-16): this field used to default
-    // to 60, and that default was STRUCTURAL in more than one product at
-    // once, differently - 60 is the only note that triggers a Volca Drum
-    // Part, 36 is where a Volca Kick sounds like a kick, and on the
-    // DR-670 the note selects which pad fires. A shared struct cannot
-    // carry three defaults. The Kick had simply kept its own 36; the
-    // DR-670's bass tested `note == 0` for "unset" against a default of
-    // 60, so a new bass step played C4 instead of the intended E2. Making
-    // "unset" explicit, and the natural note a property of the Part,
-    // means a freshly made step can never play the wrong note, in any
-    // product, whichever path created it.
+    // Represent note inheritance explicitly. A shared step cannot assume a
+    // host-specific default pitch or pad mapping.
     //
     // Renamed from `note` at the same time, deliberately: the rename made
     // the compiler list every reader in every product, so each one was
@@ -70,21 +56,13 @@ struct StepEvent {
     int ratchet = 1;             // number of repeats within the step
     float accentAmount = 0.0f;   // 0-1, boosts velocity at playback time,
                                   // kept independent of base velocity.
-    int pitchSemitoneOffset = 0; // relative, quantized against a Scale at
-                                  // edit time - see Music/Scale.h. 0 = no
-                                  // pitch lock for this step at all.
-    // Per-step note length in ms (brought in from the Volca family
-    // 2026-09-16). A host whose sound source ignores note length - the
-    // Volcas trigger on note-on only - may store it and never read it.
+    int pitchSemitoneOffset = 0; // Relative pitch is quantized against the scale at edit time; zero disables pitch lock.
+    // Per-step duration is in milliseconds and may be ignored by edge-triggered hosts.
     float gateMs = 20.0f;
-    // Gate length as a FRACTION of the step, 0..1 (brought in from the
-    // Eurorack Trigger Machine 2026-09-16). A different concept from
-    // gateMs, not a duplicate: a host driving real gate outputs wants the
-    // gate to scale with tempo, so it stores a proportion rather than a
-    // duration. Hosts that trigger on an edge only can ignore it.
+    // Gate duration as a fraction of step time, 0..1; distinct from absolute gateMs.
     float gateLength = 0.95f;
     TrigCondition condition;     // Always = no extra gating (see above)
     std::vector<ParameterLock> locks;
 };
 
-} // namespace ruidocore
+} //

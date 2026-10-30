@@ -4,11 +4,12 @@ export const fxLayouts={
   2:{controls:[['rev_on']],body:['rev_amount','rev_color'],knobs:[]},
   3:{controls:[['dist_on','dist_mode']],knobs:[['dist_drive','dist_char','dist_sym','dist_tone','dist_mix','dist_out']]},
   5:{controls:[['vap_on','vap_mode','vap_quality'],['vap_trig','vap_freeze','vap_reverse','vap_limit']],knobs:[['vap_position','vap_size','vap_pitch','vap_density','vap_texture'],['vap_drywet','vap_spread','vap_feedback','vap_reverb']]},
-  6:{controls:[['dly_on','dly_character','dly_routing'],['dly_sync','dly_freeze','TAP']],knobs:[['dly_time','dly_feedback','dly_lowcut','dly_highcut'],['dly_wow','dly_flutter','dly_mix','dly_out']]}
+  6:{controls:[['dly_on','dly_character','dly_routing'],['dly_sync','dly_freeze','TAP']],knobs:[['dly_time','dly_feedback','dly_lowcut','dly_highcut'],['dly_wow','dly_flutter','dly_mix','dly_out']]},
+  7:{controls:[['fxf_on','fxf_type']],knobs:[['fxf_cutoff','fxf_reso','fxf_drive','fxf_spread'],['fxf_follow','fxf_mix','fxf_out']]}
 };
-const inlineSwitches=new Set(['rev_on','dist_on','vap_on','vap_freeze','vap_reverse','vap_limit','dly_on','dly_freeze']);
-const inlineChoices=new Set(['dist_mode','vap_mode','vap_quality','dly_character','dly_routing']);
-const captions={rev_on:'ROOM',rev_amount:'AMOUNT',rev_color:'COLOR',dist_on:'DISTORT',dist_mode:'MODE',dist_drive:'DRIVE',dist_sym:'SYMMETRY',dist_tone:'TONE',dist_mix:'MIX',dist_out:'OUTPUT',vap_on:'VAPOR',vap_mode:'MODE',vap_quality:'QUALITY',vap_trig:'TRIG',vap_freeze:'FREEZE',vap_reverse:'REVERSE',vap_limit:'LIMIT',dly_on:'DELAY',dly_character:'CHARACTER',dly_routing:'ROUTING',dly_sync:'SYNC',dly_freeze:'FREEZE',dly_time:'TIME',dly_feedback:'FEEDBACK',dly_lowcut:'LOW CUT',dly_highcut:'HIGH CUT',dly_wow:'WOW',dly_flutter:'FLUTTER',dly_mix:'MIX',dly_out:'OUTPUT'};
+const inlineSwitches=new Set(['rev_on','dist_on','vap_on','vap_freeze','vap_reverse','vap_limit','dly_on','dly_freeze','fxf_on']);
+const inlineChoices=new Set(['dist_mode','vap_mode','vap_quality','dly_character','dly_routing','fxf_type']);
+const captions={rev_on:'ROOM',rev_amount:'AMOUNT',rev_color:'COLOR',dist_on:'DISTORT',dist_mode:'MODE',dist_drive:'DRIVE',dist_sym:'SYMMETRY',dist_tone:'TONE',dist_mix:'MIX',dist_out:'OUTPUT',vap_on:'VAPOR',vap_mode:'MODE',vap_quality:'QUALITY',vap_trig:'TRIG',vap_freeze:'FREEZE',vap_reverse:'REVERSE',vap_limit:'LIMIT',dly_on:'DELAY',fxf_on:'FILTER',fxf_type:'TYPE',fxf_cutoff:'CUTOFF',fxf_reso:'RESO',fxf_drive:'DRIVE',fxf_spread:'SPREAD',fxf_follow:'FOLLOW',fxf_mix:'MIX',fxf_out:'OUTPUT',dly_character:'CHARACTER',dly_routing:'ROUTING',dly_sync:'SYNC',dly_freeze:'FREEZE',dly_time:'TIME',dly_feedback:'FEEDBACK',dly_lowcut:'LOW CUT',dly_highcut:'HIGH CUT',dly_wow:'WOW',dly_flutter:'FLUTTER',dly_mix:'MIX',dly_out:'OUTPUT'};
 export function renderFxEditorLayout({root,el,kind,fields,field,tap}) {
   const plan=fxLayouts[kind];if(!plan)return false;
   const layout=el('div','fx-editor-layout');layout.dataset.fxKind=kind;root.append(layout);

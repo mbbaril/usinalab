@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 import {VisualSourcePublisher} from './visual-sources.js';
 import createUsina from './usina.mjs';
 
@@ -94,7 +94,7 @@ class UsinaProcessor extends AudioWorkletProcessor {
         case 'sample':                                   // SAMPLE's recording (engines/fm/FmSample.h): mono, its rate
           if (data.samples instanceof Float32Array && data.samples.length > 0) {
             const n = Math.min(data.samples.length, Math.round(30 * data.rate));
-            const ptr = m._web_sample_buffer(n);         // (the memory may grow here: the views made again)
+            const ptr = m._web_sample_buffer(n);         // the memory may grow here: the views made again
             this.views();
             if (ptr) { new Float32Array(m.HEAPF32.buffer, ptr, n).set(data.samples.subarray(0, n)); m._web_sample(n, data.rate); }
           } else m._web_sample(0, sampleRate);
@@ -129,8 +129,9 @@ class UsinaProcessor extends AudioWorkletProcessor {
     if (this.disposed) return false;
     if (!this.ready || this.failed) return true;
     const n = out[0].length;
+    const clock = globalThis.performance?.now ? () => globalThis.performance.now() : Date.now, started = clock();
     const input = inputs[0];
-    if (this.capture) this.captureBlock(input);          // (SAMPLE's capture: the input as it came)
+    if (this.capture) this.captureBlock(input);          // SAMPLE's capture: the input as it came
     let at = 0, consumed = 0;
     while (at < n) {
       while (consumed < this.count && this.frames[consumed] <= currentFrame + at) {
@@ -158,7 +159,8 @@ class UsinaProcessor extends AudioWorkletProcessor {
     const wall = Date.now();
     if (wall - (this.lastWall || 0) > 2) { if (this.burstAcc) this.burst = this.burstAcc; this.burstAcc = 0; }
     this.burstAcc = (this.burstAcc || 0) + n; this.lastWall = wall;
-    if (++this.ticks % 32 === 0) {for(let i=0;i<9;++i)this.cursors[i]=this.m._web_cursor(i);this.port.postMessage({ type: 'meter', voices: this.m._web_meter(0), reduction: this.m._web_meter(1), cursor: this.cursors[0], cursors:this.cursors, burst: this.burst || 0 });}
+    this.busy = (this.busy || 0) + clock() - started; this.span = (this.span || 0) + n / sampleRate * 1000;
+    if (++this.ticks % 32 === 0) {for(let i=0;i<9;++i)this.cursors[i]=this.m._web_cursor(i);this.port.postMessage({ type: 'meter', voices: this.m._web_meter(0), reduction: this.m._web_meter(1), cursor: this.cursors[0], cursors:this.cursors, burst: this.burst || 0, load: this.span ? this.busy / this.span : 0 });this.busy = this.span = 0;}
     return true;
   }
 }

@@ -169,7 +169,7 @@ void mutateStep(std::mt19937& rng, const MutationParams& params, const MutationP
         } else {
             const int shift = static_cast<int>((unit(rng) - 0.5f) * pitchSpan * 2.0f * params.amount);
             if (shift != 0) {
-                // Clamped to the user's own window. The jitter ADDS, so
+                // Clamped to configured window. The jitter ADDS, so
                 // without a real bound this is an unbounded walk that ends
                 // up parked at an extreme.
                 setPitch(ev, profile.pitchTarget,
@@ -261,4 +261,4 @@ Pattern Mutation::mutate(const Pattern& source, const MutationParams& params, co
     return result;
 }
 
-} // namespace ruidocore
+} //

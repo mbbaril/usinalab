@@ -27,4 +27,4 @@ bool evaluateTrigCondition(const TrigCondition& condition, int loopCount, bool f
     return true;
 }
 
-} // namespace ruidocore
+} //

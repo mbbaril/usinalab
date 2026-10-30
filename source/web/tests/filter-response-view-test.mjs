@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import assert from 'node:assert/strict';
+import {filterResponseView} from '../filter-response.js';
+class Element{constructor(){this.children=[];this.attrs={};this.dataset={};this.style={};this.classList={toggle(){}};this.isConnected=true;this.captures=new Set();}setAttribute(k,v){this.attrs[k]=String(v);}append(...c){this.children.push(...c);}focus(){this.focused=true;}getBoundingClientRect(){return {left:0,top:0,width:360,height:170};}setPointerCapture(id){this.captures.add(id);}hasPointerCapture(id){return this.captures.has(id);}releasePointerCapture(id){this.captures.delete(id);}}
+let worker;globalThis.Worker=class{constructor(){worker=this;this.requests=[];}postMessage(r){this.requests.push(r);}terminate(){this.stopped=true;}};globalThis.document={createElement:()=>new Element(),createElementNS:()=>new Element()};globalThis.requestAnimationFrame=f=>setTimeout(f,8);globalThis.cancelAnimationFrame=clearTimeout;
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),params={filter:1,filter_type:0,cutoff:600,reso:45,flt_drive:0,hp_cut:200,hp_peak:30,casc_fb:0,casc_hot:0,cmos_life:0};
+const root=filterResponseView({param:id=>params[id],setParam:(id,v)=>params[id]=v}),art=root.children[1],curve=art.children[1];await wait(10);worker.onmessage({data:{id:worker.requests.at(-1).id,status:0,values:Array(321).fill(0)}});const initial=curve.attrs.d;assert(initial.length>1000);
+const event=(x,y,type='pointermove')=>({pointerId:2,clientX:x,clientY:y,type,button:0,preventDefault(){}});art.onpointerdown(event(120,70,'pointerdown'));assert(art.focused);assert.equal(root.dataset.contacts,'1');assert.equal(curve.attrs.d,initial,'curve never clears during parameter adjustment');
+for(let i=0;i<4;i++){art.onpointermove(event(130+i*10,70-i*5));await wait(45);assert(curve.attrs.d.length>1000);}
+assert(worker.requests.length>=2,'requests run during continuous drag, not only after idle');worker.onmessage({data:{id:worker.requests.at(-1).id,status:0,values:Array(321).fill(-12)}});await wait(120);assert.notEqual(curve.attrs.d,initial);assert.equal(root.dataset.contacts,'1','curve animates before finger release');
+art.onpointerup(event(180,40,'pointerup'));const cutoff=params.cutoff;art.onpointermove(event(300,20));assert.equal(params.cutoff,cutoff);assert.equal(root.dataset.contacts,'0');root.disposeFilterResponse();assert(worker.stopped);assert.equal(art.captures.size,0);
+delete globalThis.Worker;delete globalThis.document;delete globalThis.requestAnimationFrame;delete globalThis.cancelAnimationFrame;
+console.log('Filter graph: retained curve, focus for musical typing, bounded live requests during continuous touch, animation before release and disposal passed.');

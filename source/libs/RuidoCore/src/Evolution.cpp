@@ -19,4 +19,4 @@ const Pattern& Evolution::next() {
     return pattern;
 }
 
-} // namespace ruidocore
+} //

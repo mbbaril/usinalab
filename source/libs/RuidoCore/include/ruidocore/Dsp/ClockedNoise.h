@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -37,23 +35,15 @@
 namespace ruidocore {
 
 // PolyBLEP band-limited step correction - exact port of
-// stmlib::ThisBlepSample/NextBlepSample (stmlib/dsp/polyblep.h, MIT
-// licensed, github.com/pichenettes/stmlib, downloaded and read
-// directly).
+// the reference ThisBlepSample/NextBlepSample (MIT; THIRD_PARTY.md).
 inline float thisBlepSample(float t) { return 0.5f * t * t; }
 inline float nextBlepSample(float t) {
     t = 1.0f - t;
     return -0.5f * t * t;
 }
 
-// A faithful port of Mutable Instruments' Plaits `ClockedNoise`
-// (plaits/dsp/noise/clocked_noise.h, MIT licensed,
-// github.com/pichenettes/eurorack, downloaded and read directly) -
-// white noise sample-and-held at a target frequency, PolyBLEP-corrected
-// at each hold-boundary discontinuity, with a "raw" (un-held, pure
-// white noise) component crossfaded in as the clock frequency climbs
-// past 0.25 cycles/sample (where sample-and-hold noise starts sounding
-// identical to raw noise anyway).
+// ClockedNoise DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 class ClockedNoise {
 public:
     void init() {
@@ -63,7 +53,7 @@ public:
         frequency = 0.001f;
     }
 
-    // Own PRNG (xorshift32) rather than matching Plaits' own generator
+    // Own PRNG (xorshift32) rather than matching reference generator
     // bit-for-bit - only the resulting statistical/spectral character
     // matters for noise, same reasoning as AnalogSnareDrum/AnalogHiHat's
     // own noise sources.
@@ -109,4 +99,4 @@ private:
     std::uint32_t rngState = 0x2545f491u;
 };
 
-} // namespace ruidocore
+} //

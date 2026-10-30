@@ -42,17 +42,10 @@ public:
     // and must not allocate, and nothing here may.
     using PartStamp = void (*)(int partIndex, Part& part);
 
-    // A Part's clock, as something OUTSIDE the Pattern may temporarily
-    // want it (2026-09-17, user on what GLITCH should be: "usar multiply
-    // e divide de clock, quebrar a assinatura de tempo").
+    // Temporary part-clock override without modifying the stored pattern.
     //
-    // The multiplier and divider live on the Part, so a disruptor that
-    // wanted to bend them had only two bad options: write into the
-    // Pattern (an edit, undoable, and visible in the UI as if the user
-    // had done it) or not bend them at all. This is the third: the
-    // sequencer asks, every pulse, whether anything wants this Part's
-    // clock to read differently right now. Nothing stored, nothing
-    // edited, and the Pattern is still the only thing that gets saved.
+    // Keep transient multiplier/divider changes outside Part state.
+    // Stored timing remains available for restoration when the override ends.
     using ClockWarp = void (*)(void* context, int partIndex, int& multiplier, int& divider);
     void setClockWarp(ClockWarp fn, void* context) {
         clockWarp = fn;
@@ -66,11 +59,8 @@ public:
     // once per global step tick.
     std::vector<FiredStep> tick();
 
-    // THE REAL-TIME FORM (2026-09-22). Measured on the Volca Drum: the
-    // audio thread allocated 5.2 times per block with a pattern playing.
-    // An average cost in microseconds hides what that risks - an
-    // allocation can block on the heap lock under load, which is how a
-    // plugin that measures 0.03% of a core still clicks.
+    // Realtime tick writes to caller-provided storage and reuses event lock capacity
+    // to avoid allocation and deallocation during playback.
     //
     // `out` is a buffer the CALLER owns and keeps between blocks. It is
     // grown and never shrunk, and each slot's StepEvent keeps its own
@@ -112,14 +102,8 @@ public:
     // of bounds.
     void setPart(int partIndex, Part newPart);
 
-    // setPart's real-time form (2026-10-21, found writing Usina's sequencer).
-    // setPart MOVES the new Part in, and a move-assignment frees the old
-    // Part's storage on the spot - on the audio thread, where this class's
-    // own contract says nothing may allocate; a free takes the same heap
-    // lock an allocation does. This SWAPS instead: the Sequencer gets the
-    // new Part's contents, `part` gets the old Part's, nothing is allocated
-    // or freed here, and the caller destroys the old one wherever it likes
-    // (off the audio thread). Same cursor clamp and stamp as setPart.
+    // Swap prepared part storage and return the retired part to the caller.
+    // The caller must reclaim retired vectors off the audio thread.
     void exchangePart(int partIndex, Part& part);
 
     // The non-part half of what the constructor does: replaces the
@@ -182,4 +166,4 @@ private:
     std::mt19937 rng{std::random_device{}()};
 };
 
-} // namespace ruidocore
+} //

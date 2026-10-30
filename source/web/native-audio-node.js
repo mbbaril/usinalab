@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 import {NativeAudioTransport} from './native-audio-transport.js';
 
-/** Worklet message facade. Not an AudioNode: native audio goes directly to Oboe, never context.destination. */
+/** Worklet message facade. Not an AudioNode: native audio goes directly to the native stream, never context.destination. */
 export class NativeAudioNode {
   constructor({plugin, metadata, sampleRate, capabilities = {}, oversampling = 4, intervalMs = 34, autoPoll = true,
     clock = () => performance.now() / 1000, transportOptions = {}}) {

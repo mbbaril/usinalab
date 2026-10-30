@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 // Run inside WSL: node web/test.mjs (after native and WASM builds).
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, chmodSync } from 'node:fs';
@@ -21,7 +21,7 @@ const schema = JSON.parse(wasm.UTF8ToString(wasm._web_schema()));
 assert.equal(new Set(schema.parameters.map(p => p.id)).size, schema.parameters.length);
 const ids = new Map(schema.parameters.map((p, i) => [p.id, i]));
 const names = new Map(schema.parameters.map((p, i) => [p.name, i]));
-const library = JSON.parse(readFileSync(`${root}resources/presets/caldera_library.json`, 'utf8')).patches;
+const library = JSON.parse(readFileSync(`${root}resources/presets/factory_library.json`, 'utf8')).patches;
 const result = [];
 const select = process.argv.includes('--all') ? library : library.filter(p => p.cat === 'show' || ['BICHO VIVO', 'FND BUMBO', 'IMPULSO'].includes(p.name));
 const cases = [{ name: 'INIT', values: {} }, ...select];
@@ -30,6 +30,7 @@ for (let type = 0; type < 18; ++type) cases.push({ name: `filter-${type}`, value
 for (const [name, extra] of [
   ['distort', { fx_a_type: 3, dist_on: 1, dist_drive: 24 }],
   ['delay', { fx_a_type: 6, dly_on: 1, dly_time: 15, dly_mix: .6 }],
+  ['filter', { fx_a_type: 7, fxf_on: 1, fxf_type: 1, fxf_cutoff: 400 }],
   ['room', { fx_a_type: 2, rev_amount: .7 }],
   ['texture', { fx_a_type: 1, tex_on: 1, tex_drywet: .7 }],
   ['vapor', { fx_a_type: 5, vap_on: 1, vap_drywet: .7 }],

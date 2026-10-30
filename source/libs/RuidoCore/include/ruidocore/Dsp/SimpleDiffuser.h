@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -35,15 +33,8 @@
 
 namespace ruidocore {
 
-// A DISCLOSED SIMPLIFICATION, not a faithful port, of Mutable
-// Instruments' Plaits `Diffuser` (plaits/dsp/fx/diffuser.h) - real
-// Plaits' version runs its own custom delay-line DSL (`FxEngine`, a
-// whole macro-based system for chained/LFO-modulated/12-bit-compressed
-// delay taps) across a 7-tap allpass network with an LFO-modulated long
-// delay. Porting that DSL faithfully is a disproportionate undertaking
-// for the one knob (Morph past its midpoint, in ParticleEngine) that
-// uses it, and it doesn't define this engine's actual percussive
-// character the way Particle.h's own resonant-impulse mechanism does.
+// Fixed four-stage all-pass diffuser. This implementation omits the reference
+// network's modulation and long feedback delay; it is not sample-equivalent.
 //
 // This is a plain, un-modulated 4-stage fixed-delay allpass chain
 // (Schroeder-style) - same STRUCTURAL idea (several short allpasses
@@ -59,7 +50,7 @@ public:
             p = 0;
     }
 
-    // amount: 0..1 (dry/wet). `rt` (real Plaits' own long-delay feedback
+    // amount: 0..1 (dry/wet). `rt` (reference long-delay feedback
     // amount) is unused here - no long delay line in this simplified
     // version, just the short allpass smear.
     void process(float amount, float /*rt*/, float* inOut, size_t size) {
@@ -83,10 +74,10 @@ public:
 private:
     static constexpr int kStages = 4;
     static constexpr float kApCoefficient = 0.625f;
-    static constexpr int kLengths[kStages] = {126, 180, 269, 444}; // real Plaits' own first 4 allpass tap lengths, reused here even though the surrounding DSL isn't
+    static constexpr int kLengths[kStages] = {126, 180, 269, 444}; // reference first 4 allpass tap lengths, reused here even though the surrounding DSL isn't
 
     std::array<std::array<float, 444>, kStages> lines{};
     std::array<int, kStages> writePos{};
 };
 
-} // namespace ruidocore
+} //

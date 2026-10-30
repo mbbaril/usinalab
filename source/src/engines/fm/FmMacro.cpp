@@ -4,13 +4,13 @@
 #include <cstring>
 #include <new>
 #ifdef USINA_PERSONAL_FM_BANKS
-#include "engines/macro/plaits/resources_fm_banks.h"
+#include "engines/macro/models/resources_fm_banks.h"
 #endif
 
 namespace usina::fm {
 
 namespace {
-// the instrument's INIT VOICE, packed (128 bytes, the format plaits/dsp/fm/patch.h Unpack reads): OP1 a sine at level
+// the instrument's INIT VOICE, packed (128 bytes, the format models/dsp/fm/patch.h Unpack reads): OP1 a sine at level
 // 99, the other five silent, algorithm 1, the envelopes at once; written from the format, no one's patch
 std::array<uint8_t, 4096> initBank()
 {
@@ -45,7 +45,7 @@ std::array<uint8_t, 4096> initBank()
 const uint8_t* macroFmBank(int bank)
 {
 #ifdef USINA_PERSONAL_FM_BANKS
-    return usina_plaits::fm_patches_table[std::clamp(bank, 0, 2)];
+    return usina_models::fm_patches_table[std::clamp(bank, 0, 2)];
 #else
     (void)bank;
     static const std::array<uint8_t, 4096> b = initBank();

@@ -82,14 +82,14 @@ struct MutationProfile {
     PitchTarget pitchTarget = PitchTarget::SemitoneOffset;
     bool gate = false;            // gateLength is real on this instrument
     // The span the host's own microtiming control offers. Randomize must
-    // not reach values the user cannot dial back by hand.
+    // not reach values the performer cannot dial back by hand.
     int microtimingSpanMs = 20;
     // After accentAmount changed - e.g. rebuild the accent's own locks.
     void (*afterAccent)(StepEvent& ev) = nullptr;
     // After a Part's steps are done - e.g. accent stealing, or baking.
     void (*afterPart)(int partIndex, Part& part) = nullptr;
-    // Which parts have a pitch at all (the DR-670's bass, but not its
-    // pads, where a note selects the pad). Null = all of them.
+    // Which parts have a pitch at all (a bass part, but not the pads,
+    // where a note selects the pad). Null = all of them.
     bool (*partHasPitch)(int partIndex) = nullptr;
 };
 
@@ -104,4 +104,4 @@ public:
                            const MutationProfile& profile = {});
 };
 
-} // namespace ruidocore
+} //

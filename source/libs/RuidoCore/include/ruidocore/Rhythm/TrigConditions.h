@@ -14,4 +14,4 @@ namespace ruidocore {
 // loopCount is 0-based (the first pass through the part is loop 0).
 bool evaluateTrigCondition(const TrigCondition& condition, int loopCount, bool fillActive);
 
-} // namespace ruidocore
+} //

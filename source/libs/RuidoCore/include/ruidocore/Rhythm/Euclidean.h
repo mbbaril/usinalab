@@ -16,4 +16,4 @@ namespace ruidocore {
 // pulses is clamped to [0, steps]; steps <= 0 returns an empty vector.
 std::vector<bool> euclideanRhythm(int steps, int pulses, int rotation = 0);
 
-} // namespace ruidocore
+} //

@@ -1,20 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 project(RuidoCore VERSION 0.1.0 LANGUAGES CXX)
 
-# --- Agree with whoever links this (2026-09-15) ------------------------
+# Runtime-library compatibility.
 #
-# A static library links no C runtime of its own; the final binary does.
-# But /MT vs /MD is compiled INTO these objects, so the choice still has
-# to match the consumer or the link fails with LNK2038.
+# Static-library objects must use the consumer runtime mode to avoid linker mismatch errors.
 #
-# GUARDED on purpose. Percutere builds this tree with add_subdirectory
-# and sets CMAKE_MSVC_RUNTIME_LIBRARY before doing so; that value is
-# inherited here and must win, so this project never overrides a parent
-# that has already decided. The default only applies when RuidoCore is
-# configured on its own, for its demo and test executables.
+# Preserve CMAKE_MSVC_RUNTIME_LIBRARY supplied by a parent project.
+# Apply a default only when configured independently.
 #
-# The value matches the rest of the family (see Volca Drum 250fdc8):
-# static, with Debug on the debug runtime.
+# Use static runtime linkage and the matching debug runtime in Debug.
 if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
@@ -22,18 +16,10 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Core library - pure C++17, no framework dependency. This is the part
-# meant to be genuinely portable into any host (a JUCE plugin, a
-# standalone app, a different audio framework entirely).
-# Split into two targets on 2026-09-15, when the Volca-family products
-# started adopting this library for their SEQUENCER half.
+# Portable C++17 libraries with separate sequencing and synthesis targets.
 #
-# Those products send MIDI to external hardware and synthesise nothing at
-# all, so the three Plaits/FM table translation units below are pure dead
-# weight to them - large data blobs linked into a plugin that can never
-# call them. `ruidocore_seq` is the pattern/rhythm/modulation half on its
-# own; `ruidocore` is that plus synthesis, and keeps its name and its
-# full contents so every existing consumer (Percutere) is unaffected.
+# The sequencer-only target omits synthesis tables and engine data.
+# The full target adds synthesis while retaining the same consumer API.
 add_library(ruidocore_seq STATIC
     src/Sequencer.cpp
     src/Mutation.cpp
@@ -49,17 +35,14 @@ add_library(ruidocore_seq STATIC
 target_include_directories(ruidocore_seq PUBLIC include)
 
 add_library(ruidocore STATIC
-    src/PlaitsWaveData.cpp
+    src/WaveBankData.cpp
     src/FmQuantizerTable.cpp
-    src/PlaitsResonatorTables.cpp)
+    src/ResonatorTables.cpp)
 target_include_directories(ruidocore PUBLIC include)
 target_link_libraries(ruidocore PUBLIC ruidocore_seq)
 
-# ModShapeLibrary is the one module that depends on JUCE (juce::File for
-# shared shapes-folder filesystem access) - kept as an opt-in add-on, not
-# part of the core target, so consuming the pure-C++ core never drags in
-# JUCE. Off by default; a host project that already has JUCE available
-# can turn this on and add its own JUCE module link.
+# Optional filesystem-backed shape library. Keep framework dependencies
+# out of the portable core; consumers enable and link this target explicitly.
 option(RUIDOCORE_WITH_JUCE_MODSHAPES "Build the JUCE-dependent ModShapeLibrary module" OFF)
 if(RUIDOCORE_WITH_JUCE_MODSHAPES)
     add_library(ruidocore_modshapes STATIC src/ModShapeLibrary.cpp)

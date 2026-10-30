@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 import {NativeMessageEncoder} from './native-audio-protocol.js';
 
 /** One producer for every JNI command, with bounded backlog and ordered retry on ring refusal. */

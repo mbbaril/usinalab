@@ -67,4 +67,4 @@ struct Song {
 // rather than waiting for the same boundary.
 enum class SceneQuantize { Immediate, NextStep, NextBar, Next2Bars, Next4Bars };
 
-} // namespace ruidocore
+} //

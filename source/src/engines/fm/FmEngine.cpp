@@ -86,6 +86,10 @@ void Engine::prepare(double rate, bool firmware2x, double band)
         v = Voice {};
         for (auto& o : v.op) o.fx.line.assign((size_t)fx.lineLength(), 0.0f);
         v.vf.prepare(fs, fw2x);
+        v.vfR.prepare(fs, fw2x);
+        v.vf2.prepare(fs, fw2x);
+        v.vf2R.prepare(fs, fw2x);
+        v.lpgR.prepare(fs);
         v.lpg.prepare(fs);
     }
     // the MACRO operators' models: made once (never on the audio thread), prepared for this rate
@@ -192,6 +196,10 @@ void Engine::derive()
     d.filterOn = f.on && !d.cascOn;
     d.flg = lo + std::clamp(f.cutoff, 0, 1000) * span / 1000.0;
     d.hlg = lo + std::clamp(f.hpCut, 0, 1000) * span / 1000.0;
+    // SK CASC is a part-level filter, so the second filter's type list skips it.
+    d.f2Route = patch.f2Route;
+    d.f2Type = patch.f2Type >= kCascType ? patch.f2Type + 1 : patch.f2Type;
+    d.f2lg = lo + std::clamp(patch.f2Cut, 0, 1000) * span / 1000.0;
     d.drive = std::exp2(3.0 * std::clamp(f.drive, 0, 100) / 100.0);
     d.cascFb = std::clamp(f.cascFb, -100, 100) * 2.0 / 100.0;
     d.outGain = std::pow(10.0, 0.75 * std::clamp(patch.outGain, 0, 32) / 20.0);
@@ -199,6 +207,7 @@ void Engine::derive()
     // the LFOs: SPEED 0..127 = 0.01 .. 100 Hz (exponential), a control block's share of a cycle; the fade's step;
     // the phase a key restarts them at
     lfoRates();
+    updateStereo();
     for (int k = 0; k < kNumLfos; ++k) {
         const auto& l = patch.lfo[k];
         const double fadeMs = T.envMs[(size_t)std::clamp(l.fade, 0, 127)];
@@ -247,6 +256,11 @@ Engine::OpCoef Engine::opCoef(const OpParams& o, int fbOffset, double da, double
         c.fe = std::clamp(C, 0.0, 200.0);                // (as CUTOFF: half semitones from the pitch, 100 = on it)
         c.fres = std::clamp(D, 0.0, 100.0);
         c.foff = (c.fe - 100.0) / 24.0;
+    } else if (o.mode == BITS) {                         // A: BITS; B: XOR; C: KEEP; D: OFFSET - all moved
+        c.b = (float)std::clamp(B, 0.0, 100.0);
+        c.fe = std::clamp(C, 0.0, 200.0);
+        c.fres = std::clamp(D, 0.0, 100.0);
+        c.a = (float)std::clamp(A, 0.0, 100.0);
     } else if (o.mode == UNISON) {                       // (FmUnison.h) A: VOICES, a list; B: DETUNE; C: MIX; D: DRIFT
         c.ftype = std::clamp(o.a, 0, kUnisonMax - 1);
         c.b = (float)std::clamp(B, 0.0, 100.0);
@@ -312,6 +326,15 @@ void Engine::modBlock(Voice& v, double env1, double env2, double env3)
         const double amt = std::clamp(c.amount + xm(XV_C1TYPE + k * kCombValues + 3), -100.0, 100.0);
         s[MS_COMB1 + k] = combBlock(c.type, in(c.src), in(c.mod), amt / 100.0, v.combSt[k], blockSec, inputLevel);
     }
+    // the LPG's sources and SK CASC's VCA source: a level 0..1 (a bipolar source: -1..1 to 0..1)
+    static_assert(kNumSources == 44, "the LPG's and CASC's SOURCE ranges in FmSchema.cpp: 0..kNumSources - 1");
+    const auto level01 = [&](int src) {
+        if (src <= MS_NONE || src >= kNumSources) return 0.0;
+        return std::clamp(modSourceBipolar(src) ? 0.5 * (s[src] + 1.0) : s[src], 0.0, 1.0);
+    };
+    v.lpgSrcL = (float)level01(patch.lpgSrc);
+    v.lpgSrcR = (float)level01(patch.lpgRSrc);
+    if (v.age == liveAge) cascSrcLevel = level01(patch.cascSrc);
     // the engine-wide ones (the common LFOs' SPEED, RAND's settings) follow the newest voice's routes
     if (v.age == liveAge) {
         for (int k = 0; k < kNumLfos; ++k) lfoRateMul[k] = lfoSpeedMul(v, k);
@@ -457,6 +480,8 @@ ModalSettings Engine::modalSettings(const Voice& v, int k) const
     s.rattle = std::clamp(po.rattle + mo(11), 0.0, 100.0) / 100.0;
     // DAMP: only once the key is let go (a held note rings as the material says)
     s.damp = v.gate ? 0.0 : std::clamp(po.damp + v.mod[(size_t)extIndex(XV_O1DAMP + op)], 0.0, 100.0) / 100.0;
+    // stereo, stage 2: the second pickup, only when the voice path is two channels (else nothing would hear it)
+    s.pickup = d.stereo ? std::clamp(po.width + v.mod[(size_t)extIndex(XV_O1WIDTH + op)], 0.0, 100.0) / 100.0 : 0.0;
     return s;
 }
 
@@ -469,6 +494,25 @@ void Engine::setRoutes(const Routes& r)
             routes.r[(size_t)routes.n++] = x;
     }
     for (auto& v : voices) v.mod.fill(0.0);              // (a route removed leaves nothing behind)
+    updateStereo();
+}
+
+// stage 2: the voice path in two channels when the patch can make a side - an operator's WIDTH on UNISON or MODAL, the
+// filter's OFFSET - or a route can move one of them; else the mono path, exactly as before
+void Engine::updateStereo()
+{
+    bool st = (patch.fltOffset != 0 && d.filterOn) || patch.lpgRMode != 0;   // (the LPG's right its own: stereo)
+    if (patch.f2Route == 3) st = true;
+    for (int k = 0; k < 6; ++k) {
+        const int mode = d.mode[(size_t)k];
+        if (patch.op[(size_t)(5 - k)].width > 0 && (mode == UNISON || mode == MODAL)) st = true;
+    }
+    for (int i = 0; i < routes.n; ++i) {
+        const int dst = routes.r[(size_t)i].dst;
+        if ((dst >= extIndex(XV_O1WIDTH) && dst < extIndex(XV_O1WIDTH + 6)) || (dst == extIndex(XV_FLTOFF) && d.filterOn))
+            st = true;
+    }
+    d.stereo = st;
 }
 
 void Engine::setControllers(double aftertouch, double modWheel, double expression)
@@ -654,10 +698,9 @@ void Engine::lfoCycle(LfoRandom& r, uint32_t& rnd)
     r.lorV = std::clamp(r.lorX / 20.0, -1.0, 1.0);
 }
 
-// an envelope (0..1) and an LFO (-1..1) times their depths (1/16 semitone) -> octaves. The firmware's arithmetic
-// rounds each product DOWN to whole 1/16 semitones (an arithmetic shift): a small depth's vibrato is then lopsided,
-// a constant flat offset of ~1/32 semitone on average, that detunes an operator against the others and drifts their
-// phases (CLARINETE, 20/10: its level wanders 5 dB). The A/B (fw2x) keeps that; the native engine does not
+// Envelope and LFO pitch depths are in 1/16 semitones; the result is octaves.
+// Reference arithmetic floors each product, creating an average flat offset
+// of ~1/32 semitone. fw2x preserves that quantization; native mode does not.
 double Engine::pitchMod(double env, double envDepth, double lfo, double lfoDepth) const
 {
     if (!fw2x) return (env * envDepth + lfo * lfoDepth) / 192.0;
@@ -827,6 +870,11 @@ void Engine::noteOn(int note, int velocity, int channel)
     v->active = v->gate = true;
     v->note = note;
     v->channel = channel >= 0 && channel < 16 ? channel : -1;
+    // SPREAD: the note's place - KEY by its pitch (C4 the middle, three octaves either side the edges), ALTERNATE one
+    // side then the other, RANDOM anywhere
+    if (patch.spread == 1) { v->place = d.altSide; d.altSide = -d.altSide; }
+    else if (patch.spread == 2) v->place = 2.0 * (xorshift(v->rng) >> 8) / 16777216.0 - 1.0;
+    else v->place = std::clamp((note - 60) / 36.0, -1.0, 1.0);
     v->expressionFrozen = false;
     if(v->channel >= 0)channelPitchSmooth[v->channel]=channelPitch[v->channel];
     v->vel = std::clamp(velocity, 0, 127);
@@ -899,9 +947,16 @@ void Engine::noteOn(int note, int velocity, int channel)
         v->dc = 0.0;
         v->vf.reset();
         v->lpg.reset();
+        v->vfR.reset();
+        v->lpgR.reset();
+        v->dcR = 0.0;
         v->flt = Slide {};
+        v->vf2.reset();
+        v->vf2R.reset();
+        v->flt2 = Slide {};
     }
     v->lpg.trigger();                                     // (PING: each note strikes the gate; EG2 mode ignores it)
+    v->lpgR.trigger();
     envGo(v->eg1, Env::Atk, eg1Adsr(*v));
     envGo(v->eg2, Env::Atk, eg2Adsr(*v));
     envGo(v->env1, Env::Atk, env1Adsr(*v));
@@ -970,6 +1025,7 @@ float Engine::opSample(Voice& v, int k, float in, float self, double g)
     const int mode = d.mode[(size_t)k], wave = d.wave[(size_t)k];
     const double ph = o.phase;
     float y = 0.0f;
+    o.side = 0.0f;
 
     // the oscillator at phase p: a table (SAW HD / SQR HD: the two band-limited levels its octave lies between),
     // else a noise (one value a sample)
@@ -1081,6 +1137,7 @@ float Engine::opSample(Voice& v, int k, float in, float self, double g)
     case MODAL: {                                         // the object (FmModal.h): the input + OSCMIX x the oscillator,
         const double ex = (m + osc(ph) * v.oc[(size_t)k].a) * o.eg;   // shaped by the envelope, excite it; the strike
         y = (float)(o.modal.process(ex, o.eg) * g);       // at a note is the bank's own; it rings out by itself
+        o.side = (float)(o.modal.side * g);               // (stereo, stage 2: the second pickup's difference)
         break;
     }
     case CHAOS: {                                         // the generator, a step a cycle of the phase - FM moves it
@@ -1116,41 +1173,76 @@ float Engine::opSample(Voice& v, int k, float in, float self, double g)
         double centre = 1.0, side = 0.0;
         unisonGains(c.fe / 200.0, n, centre, side);
         UnisonState& u = o.uni;
-        // a band-limited table at the level the increment allows (as osc's SAW HD / SQR HD)
-        const auto hd = [&](const std::array<std::array<float, kTableN + 1>, kHdLevels>& L, double p, double inc) {
+        u.places(n, fs);
+        // a band-limited table's two levels for an increment (as osc's SAW HD / SQR HD) - once a sample, not once a
+        // copy: every copy reads at the operator's increment
+        struct Level { int a, b; double w; };
+        const auto level = [&](double inc) {
             const double q = std::log2(std::max(inc * hdScale, 1e-12) * 16777216.0) - 15.0;
             const int nq = (int)std::floor(q);
-            int a = std::min(nq + 1, 8), b = std::min(nq + 2, 8);
-            double w = q - nq;
-            if (nq + 1 < 0) { a = b = 0; w = 0.0; }
-            const float x = lookup(L[(size_t)a], p);
-            return (double)x + (lookup(L[(size_t)b], p) - x) * w;
+            Level l { std::min(nq + 1, 8), std::min(nq + 2, 8), q - nq };
+            if (nq + 1 < 0) l = { 0, 0, 0.0 };
+            return l;
         };
+        const auto hd = [&](const std::array<std::array<float, kTableN + 1>, kHdLevels>& L, double p, const Level& l) {
+            const float x = lookup(L[(size_t)l.a], p);
+            return (double)x + (lookup(L[(size_t)l.b], p) - x) * l.w;
+        };
+        const bool hdWave = wave == SAWHD || wave == SQRHD || (wave >= HALFSIN && wave <= LOGSAW);
+        const auto& hdTables = wave == SAWHD ? T.hdSaw : wave == SQRHD ? T.hdSqr : T.hdChip[(size_t)std::max(0, wave - HALFSIN)];
+        const Level lv = level(o.inc);
         // PWM on the squares: each copy a pulse of its own width (two saws apart), swept by its own triangle
         const bool pulse = pwm > 0.0 && (wave == SQR || wave == SQRHD);
         const auto copy = [&](double p, int i) {
-            if (!pulse) return (double)osc(p);
-            const double w = 0.5 + 0.45 * pwm * (2.0 * unisonTri(u.pwmPh[(size_t)i]) - 1.0);
-            u.pwmPh[(size_t)i] += unisonPwmRate(i) / fs;
-            if (u.pwmPh[(size_t)i] >= 1024.0) u.pwmPh[(size_t)i] -= 1024.0;
-            return hd(T.hdSaw, p, o.inc) - hd(T.hdSaw, p + w, o.inc);   // (two +-1 ramps apart: a +-1 pulse)
+            if (pulse) {
+                const double w = 0.5 + 0.45 * pwm * (2.0 * unisonTri(u.pwmPh[(size_t)i]) - 1.0);
+                u.pwmPh[(size_t)i] += u.pwmStep[(size_t)i];
+                if (u.pwmPh[(size_t)i] >= 1024.0) u.pwmPh[(size_t)i] -= 1024.0;
+                return hd(T.hdSaw, p, lv) - hd(T.hdSaw, p + w, lv);   // (two +-1 ramps apart: a +-1 pulse)
+            }
+            if (hdWave) {                                 // (osc's own expression, its level worked out above)
+                const float x = lookup(hdTables[(size_t)lv.a], p);
+                return (double)(float)(x + (lookup(hdTables[(size_t)lv.b], p) - x) * lv.w);
+            }
+            return (double)osc(p);
         };
-        double s = copy(ph + in, 0) * centre;
+        double s = copy(ph + in, 0) * centre, sd = 0.0;
         if (n > 1) {
             u.drifts(c.fres / 100.0, n, fs, v.rng);
             const double spread = unisonSpread(c.b / 100.0);
             for (int i = 1; i < n; ++i) {
-                s += copy(u.ph[(size_t)i] + in, i) * side;
-                u.ph[(size_t)i] += o.inc * (1.0 + spread * unisonPosition(i, n) + u.drift[(size_t)i]);
+                const double cv = copy(u.ph[(size_t)i] + in, i) * side;
+                s += cv;
+                sd += cv * u.pos[(size_t)i];              // (stereo, stage 2: each copy at its place)
+                u.ph[(size_t)i] += o.inc * (1.0 + spread * u.pos[(size_t)i] + u.drift[(size_t)i]);
                 if (u.ph[(size_t)i] >= 1024.0) u.ph[(size_t)i] -= 1024.0;
             }
         }
         if (sub > 0.0) {                                  // SUB: a square an octave below the centre
-            s += 0.7 * sub * hd(T.hdSqr, u.subPh + 0.5 * in, 0.5 * o.inc);
+            s += 0.7 * sub * hd(T.hdSqr, u.subPh + 0.5 * in, level(0.5 * o.inc));
             u.subPh += 0.5 * o.inc;
             if (u.subPh >= 1024.0) u.subPh -= 1024.0;
         }
         y = (float)(s * g);
+        if (d.stereo && n > 1)                            // (WIDTH: the copies spread; the centre stays in the middle)
+            o.side = (float)(sd * std::clamp(patch.op[(size_t)op].width + v.mod[(size_t)extIndex(XV_O1WIDTH + op)], 0.0,
+                                             100.0) / 100.0 * g);
+        break;
+    }
+    case BITS: {                                          // N-bit waveform processing:
+        // Read the phase-modulated waveform as an N-bit code. XOR flips masked
+        // bits, KEEP clears low bits and OFFSET adds with wraparound.
+        // BITS 16, XOR 0, KEEP all and OFFSET 0 retain 16-bit quantization.
+        const OpCoef& c = v.oc[(size_t)k];
+        const int nb = 1 + (int)std::lround(c.a / 100.0 * 15.0);
+        const int full = (1 << nb) - 1;
+        const int xorMask = (int)std::lround(c.b / 100.0 * full);
+        const int keep = (int)std::lround(c.fe / 200.0 * nb), keepMask = keep >= nb ? full : (full >> (nb - keep)) << (nb - keep);
+        const int offset = (int)std::lround(c.fres / 100.0 * (full + 1));
+        const double x = std::clamp((double)osc(ph + in), -1.0, 1.0);
+        int code = std::clamp((int)std::floor((x + 1.0) * 0.5 * (full + 1)), 0, full);
+        code = (((code ^ xorMask) & keepMask) + offset) & full;
+        y = (float)(((code + 0.5) / (full + 1) * 2.0 - 1.0) * g);
         break;
     }
     case STOCH: {                                         // its breakpoints, a cycle of them a cycle of the phase
@@ -1209,7 +1301,7 @@ void Engine::renderChunk(float* left, float* right, int n)
         float y[6];
         for (int k = 0; k < 6; ++k) y[k] = v.op[(size_t)k].y1;
         for (int i = 0; i < n; ++i) {
-            double sum = 0.0;
+            double sum = 0.0, side = 0.0;                 // (side: stereo, stage 2)
             if (v.ctlPos == 0) {                          // a new control block (opx_render's setup)
                 // the LFOs: the voice's own phase (KEY SYNC VOICE) or the common one, faded in
                 // (the voice's routes, from its last block, move SPEED, SYMMETRY, MORPH and FADE: an LFO by another)
@@ -1300,11 +1392,37 @@ void Engine::renderChunk(float* left, float* right, int n)
                     v.flt.block(d.flg, pitchMod(e2, vfp.eg2Int + mg(GV_FEG2), v.lfo[1], vfp.lfo2Int + mg(GV_FLFO2)) +
                                            keyTrack(v.note) + mg(GV_FCUT) * cutSpan() / 1000.0, ctl);
                 v.fReso = std::clamp(vfp.reso + mg(GV_FRES), 0.0, 100.0);
+                if (d.f2Route != 0) {                    // second filter: cutoff from EG2, key tracking and routes
+                    const auto mx = [&](int x) { return mo(extIndex(x)); };
+                    v.flt2.block(d.f2lg, pitchMod(e2, patch.f2Eg2 + mx(XV_F2EG2), 0.0, 0.0) +
+                                             (v.note - vfp.keyCenter) * patch.f2Key / 1200.0 +
+                                             mx(XV_F2CUT) * cutSpan() / 1000.0, ctl);
+                    v.f2Reso = std::clamp(patch.f2Reso + mx(XV_F2RESO), 0.0, 100.0);
+                    v.f2Drive = std::exp2(3.0 * std::clamp(patch.f2Drive + mx(XV_F2DRIVE), 0.0, 100.0) / 100.0);
+                    v.f2Mix = std::clamp(patch.f2Mix + mx(XV_F2MIX), 0.0, 100.0) / 100.0;
+                }
+                v.fltOff = std::clamp(patch.fltOffset + mo(extIndex(XV_FLTOFF)), -48.0, 48.0) / 12.0;   // (stage 2)
                 v.fDrive = mg(GV_FDRIVE) != 0.0 ? std::exp2(3.0 * std::clamp(vfp.drive + mg(GV_FDRIVE), 0.0, 100.0) / 100.0)
                                                 : d.drive;
                 v.outGain = mg(GV_OGAIN) != 0.0 ? d.outGain * std::pow(10.0, 0.75 * mg(GV_OGAIN) / 20.0) : d.outGain;
                 v.lpgDecay = (float)(std::clamp(patch.lpgDecay + mo(extIndex(XV_LPGDECAY)), 0.0, 100.0) / 100.0);
                 v.lpgColor = (float)(std::clamp(patch.lpgColor + mo(extIndex(XV_LPGCOLOR)), 0.0, 100.0) / 100.0);
+                v.lpgDecayR = (float)(std::clamp(patch.lpgDecay + mo(extIndex(XV_LPGDECAY)) + patch.lpgRDecay +
+                                                     mo(extIndex(XV_LPGRDEC)), 0.0, 100.0) / 100.0);
+                // the voice's place in stereo: its spread place x WIDTH, plus PAN; the gains equal-power around a
+                // middle of exactly 1 and 1 (WIDTH 0, PAN 0: bit for bit the mono voice), ramped across the block
+                const double w = std::clamp(patch.width + mo(extIndex(XV_WIDTH)), 0.0, 100.0) / 100.0;
+                const double p = std::clamp(v.place * w + std::clamp(patch.pan + mo(extIndex(XV_PAN)), -100.0, 100.0) / 100.0,
+                                            -1.0, 1.0);
+                double tl = 1.0, tr = 1.0;
+                if (p != 0.0) {
+                    const double th = (p + 1.0) * 0.78539816339744831;   // (pi / 4: 0 left .. pi / 2 right)
+                    tl = 1.4142135623730951 * std::cos(th);
+                    tr = 1.4142135623730951 * std::sin(th);
+                }
+                v.dPanL = (tl - v.panL) / ctl;
+                v.dPanR = (tr - v.panR) / ctl;
+                if (v.dPanL == 0.0 && v.dPanR == 0.0) { v.panL = tl; v.panR = tr; }
             }
             if (++v.ctlPos >= ctl) v.ctlPos = 0;
             for (int k = 0; k < 6; ++k) {
@@ -1326,14 +1444,73 @@ void Engine::renderChunk(float* left, float* right, int n)
                 for (int j = 0; j < 6; ++j)
                     if (j != k && d.mx[(size_t)j][(size_t)k] != 0.0f) in += y[j] * d.mx[(size_t)j][(size_t)k];
                 y[k] = opSample(v, k, in, d.mx[(size_t)k][(size_t)k], g);
-                if ((d.dout >> k) & 1) sum += y[k];
+                if ((d.dout >> k) & 1) {
+                    sum += y[k];
+                    side += v.op[(size_t)k].side;
+                }
+            }
+            // stereo, stage 2: two channels - the side added and taken away, each through its own filter (the right
+            // one's cutoff OFFSET from the left's), LPG, LOFI and DC blocker, then placed as a mono voice is (SK CASC:
+            // the part's filter is one, so the middle alone)
+            if (d.stereo && !d.cascOn) {
+                double yl = (double)sum - side, yr = (double)sum + side;
+                const double inL = yl, inR = yr;         // second filter input for parallel and stereo routes
+                if (d.filterOn) {
+                    const double c = v.flt.next();
+                    yl = v.vf.process(yl, c, vfp.type, v.fReso, v.fDrive, vfp.cmosLife);
+                    yr = v.vfR.process(yr, c + v.fltOff, vfp.type, v.fReso, v.fDrive, vfp.cmosLife);
+                }
+                // Series follows the first filter and parallel shares its input, both per channel with the right
+                // channel offset. Stereo filters the right channel only, crossfaded with the first filter by MIX.
+                if (d.f2Route != 0) {
+                    const double c2 = v.flt2.next();
+                    if (d.f2Route == 3) {
+                        const double y2 = v.vf2R.process(inR, c2, d.f2Type, v.f2Reso, v.f2Drive, vfp.cmosLife);
+                        yr += v.f2Mix * (y2 - yr);
+                    } else {
+                        const bool ser = d.f2Route == 1;
+                        const double yl2 = v.vf2.process(ser ? yl : inL, c2, d.f2Type, v.f2Reso, v.f2Drive, vfp.cmosLife);
+                        const double yr2 = v.vf2R.process(ser ? yr : inR, c2 + v.fltOff, d.f2Type, v.f2Reso, v.f2Drive,
+                                                          vfp.cmosLife);
+                        yl += v.f2Mix * (yl2 - yl);
+                        yr += v.f2Mix * (yr2 - yr);
+                    }
+                }
+                // the LPG on each side: the left's MODE; the right's own (or SAME), its DECAY offset, its SOURCE
+                if (patch.lpgMode != VoiceLpg::kOff)
+                    yl = v.lpg.process((float)yl, patch.lpgMode, v.lpgDecay, v.lpgColor,
+                                       patch.lpgMode == VoiceLpg::kSource ? v.lpgSrcL : (float)v.eg2.lvl, (float)v.note);
+                const int rMode = patch.lpgRMode == 0 ? patch.lpgMode : patch.lpgRMode;
+                if (rMode != VoiceLpg::kOff) {
+                    const float rSrc = patch.lpgRMode == 0 ? v.lpgSrcL : v.lpgSrcR;
+                    yr = v.lpgR.process((float)yr, rMode, v.lpgDecayR, v.lpgColor,
+                                        rMode == VoiceLpg::kSource ? rSrc : (float)v.eg2.lvl, (float)v.note);
+                }
+                if (patch.lofi) {
+                    yl = std::floor((yl + 1.0 / 4096.0) * 2048.0) / 2048.0;
+                    yr = std::floor((yr + 1.0 / 4096.0) * 2048.0) / 2048.0;
+                }
+                const double xl = yl - v.dc, xr = yr - v.dcR;
+                v.dc += xl * dcCoef;
+                v.dcR += xr * dcCoef;
+                left[i] += (float)(xl * kOut * v.outGain) * (float)v.panL;
+                right[i] += (float)(xr * kOut * v.outGain) * (float)v.panR;
+                v.panL += v.dPanL;
+                v.panR += v.dPanR;
+                continue;
             }
             // the voice filter; LOFI's 12 bits; the voice's DC blocker (after the filter, as the firmware's); then
             // the output (OUT GAIN), or SK CASC's sum (the part's filter)
             double yv = sum;
             if (d.filterOn) yv = v.vf.process(yv, v.flt.next(), vfp.type, v.fReso, v.fDrive, vfp.cmosLife);
+            if (d.f2Route != 0) {                        // mono path: stereo route reaches here only with SK CASC
+                const double y2 = v.vf2.process(d.f2Route == 2 ? (double)sum : yv, v.flt2.next(), d.f2Type, v.f2Reso,
+                                                v.f2Drive, vfp.cmosLife);
+                yv += v.f2Mix * (y2 - yv);
+            }
             if (patch.lpgMode != VoiceLpg::kOff)          // the LPG, after the filter (the gate and the VCA in one)
-                yv = v.lpg.process((float)yv, patch.lpgMode, v.lpgDecay, v.lpgColor, (float)v.eg2.lvl, (float)v.note);
+                yv = v.lpg.process((float)yv, patch.lpgMode, v.lpgDecay, v.lpgColor,
+                                   patch.lpgMode == VoiceLpg::kSource ? v.lpgSrcL : (float)v.eg2.lvl, (float)v.note);
             if (patch.lofi) yv = std::floor((yv + 1.0 / 4096.0) * 2048.0) / 2048.0;
             const double x = yv - v.dc;
             v.dc += x * dcCoef;
@@ -1341,8 +1518,10 @@ void Engine::renderChunk(float* left, float* right, int n)
                 partBuf[(size_t)i] += (float)x;
             } else {
                 const float o = (float)(x * kOut * v.outGain);
-                left[i] += o;
-                right[i] += o;
+                left[i] += o * (float)v.panL;                  // (in stereo: the voice's place)
+                right[i] += o * (float)v.panR;
+                v.panL += v.dPanL;
+                v.panR += v.dPanR;
             }
         }
         // the voice ends when every heard operator's envelope is done (a BYPASS carrier: every operator heard);
@@ -1358,7 +1537,8 @@ void Engine::renderChunk(float* left, float* right, int n)
             if (d.mode[(size_t)k] == MODAL && v.op[(size_t)k].modal.level > 3e-5) live = true;   // (still ringing)
         }
         if (d.cascOn && vfp.cascVca == 1 && !v.gate && part.eg2.st == Env::Off) live = false;
-        if (patch.lpgMode == VoiceLpg::kPing && v.lpg.closed()) live = false;   // (PING: the gate fell shut)
+        if (patch.lpgMode == VoiceLpg::kPing && v.lpg.closed() && (!d.stereo || v.lpgR.closed()))
+            live = false;                                 // (PING: the gate fell shut - both, in stereo)
         if (!live) v.active = false;
         anyGate = anyGate || (v.active && v.gate);
         anySounding = anySounding || v.active;
@@ -1397,6 +1577,8 @@ void Engine::renderPart(float* left, float* right, int n, bool anyGate, bool any
             double g1 = 1.0;
             if (f.cascVca == 1) {
                 g1 = std::max(e2, 0.0);                    // EG2
+            } else if (f.cascVca == 3) {                   // SOURCE: a modulation source's level
+                g1 = cascSrcLevel;
             } else if (f.cascVca == 2) {                   // ENV: the loudest carrier's envelope
                 g1 = 0.0;
                 for (const auto& v : voices)

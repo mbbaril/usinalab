@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -37,24 +35,19 @@
 
 namespace ruidocore {
 
-// Wraps Dsp/AnalogSnareDrum.h as a RuidoCore Engine - a faithful-effort
-// port of Mutable Instruments' Plaits `SnareDrumEngine`
-// (plaits/dsp/engine/snare_drum_engine.h/.cc, MIT licensed,
-// github.com/pichenettes/eurorack), second of Percutere's first batch of
-// dedicated percussion engines ("faça os percussivos primeiro" /
-// "vamos lá", 2026-08-27).
+// See THIRD_PARTY.md and the preserved license notice for source provenance.
 //
-// Knob mapping confirmed against the official Plaits manual (see
+// Knob mapping confirmed against the official reference manual (see
 // AnalogSnareDrum.h's own header comment for the exact quotes and the
 // harmonics/morph swap that check caught):
-//   timbre    -> tone (mode-gain shaping)
-//   harmonics -> snappy (shell vs noise balance)
-//   morph     -> decay (mode Q/ring + noise envelope time)
-//   note      -> f0
-//   accent    -> exciter pulse height AND, via postProcessing.outGain,
-//                overall level
+// timbre -> tone (mode-gain shaping)
+// harmonics -> snappy (shell vs noise balance)
+// morph -> decay (mode Q/ring + noise envelope time)
+// note -> f0
+// accent -> exciter pulse height AND, via postProcessing.outGain,
+// overall level
 //
-// Real Plaits' own SnareDrumEngine renders TWO independent models in
+// reference SnareDrumEngine renders TWO independent models in
 // parallel (AnalogSnareDrum to `out`, a SyntheticSnareDrum to `aux`) -
 // same scope-cut as BassDrumEngine.h: only the analog model is ported
 // this pass; `aux` carries a simpler noise-only layer as a stand-in,
@@ -94,9 +87,8 @@ public:
             holdSamplesRemaining = static_cast<int>(2.0 * sampleRateHz); // same fixed-hold reasoning as BassDrumEngine
         }
 
-        // Internal punch envelope, same block-rate approach and same
-        // gap-closing reasoning as BassDrumEngine.h's own (see its
-        // comment for why block-rate, not per-sample).
+        // Update the shared decay envelope at control-block cadence and apply enabled
+        // parameter depths to the engine controls.
         const float shortDecay = (200.0f * 24.0f / static_cast<float>(sampleRateHz)) *
                                   semitonesToRatio(-96.0f * parameters.decay);
         decayEnvelope.process(shortDecay * 2.0f);
@@ -107,10 +99,7 @@ public:
         const float modulatedHarmonics = std::clamp(parameters.harmonics + parameters.harmonicsEnvAmount * envValue, 0.0f, 1.0f);
         const float modulatedTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
         const float modulatedMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
-        // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-        // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-        // positive amount, easily masked by this engine's own natural decay;
-        // negative already reaches full silence at max amount so stays as-is).
+        // Envelope depth is bipolar; positive depth uses the extended gain range.
         const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                         ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                         : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
@@ -149,4 +138,4 @@ private:
     bool gateOpen = false;
 };
 
-} // namespace ruidocore
+} //

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// PLAY (docs/PLAY.md): the pure part - the organ's keys, the grid, the snapshots' mix on the XY, the looped gesture,
-// the macros as CCs, the saved state. The same rules as the plugin's ui/PlayPanel (C3 = 60, the CABINE's names).
+// Pure keyboard, scale-grid, snapshot interpolation, gesture-loop and MIDI macro state.
+// C3 is MIDI note 60; performance behavior matches the plugin.
 import {cabineScales} from './cabine-keys.js';
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,Number.isFinite(+v)?+v:a));
 export const WHITE=[0,2,4,5,7,9,11],WHITES=22,GRID_COLS=16,GRID_ROWS=6,FIXED_VELOCITY=100,MACRO_CC=16,GLIDES=[0,.25,.5,1,2,4];
@@ -53,7 +53,7 @@ export const tierFor=width=>width<600?'phone':width<900?'tablet':'desktop';
 export const maxManuals=width=>width<900?2:3;
 export function defaultPlayState(){
   return {snaps:[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]],set:0,x:.5,y:.5,loop:[],layout:'organ',manuals:3,octaves:[2,3,4],vel:true,glide:2,lock:false,
-    dest:'here',mpe:true,scale:1,root:0,gridOctave:2,slide:null,panel:null};   // (slide null: by the width - BEND on a phone)
+    dest:'here',mpe:true,scale:1,root:0,gridOctave:2,slide:null,panel:null};   // slide null: by the width - BEND on a phone
 }
 export function parsePlayState(data){
   const s=defaultPlayState(),d=data&&typeof data==='object'?data:{};
@@ -65,7 +65,7 @@ export function parsePlayState(data){
   s.vel=d.vel!==false;s.glide=clamp(Math.round(d.glide??2),0,GLIDES.length-1);s.lock=d.lock===true;
   s.dest=d.dest==='control'?'control':'here';s.mpe=d.mpe!==false;s.scale=clamp(Math.round(d.scale??1),0,cabineScales.length-1);
   s.slide=d.slide==='bend'||d.slide==='legato'?d.slide:null;
-  s.panel=['full','compact','keys'].includes(d.panel)?d.panel:null;   // (null: compact on a short screen, else full)
+  s.panel=['full','compact','keys'].includes(d.panel)?d.panel:null;   // null: compact on a short screen, else full
   s.root=clamp(Math.round(d.root??0),0,11);s.gridOctave=clamp(Math.round(d.gridOctave??2),0,8);
   return s;
 }

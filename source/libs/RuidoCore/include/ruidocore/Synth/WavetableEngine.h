@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,7 +29,7 @@
 
 #include "../Dsp/DecayEnvelope.h"
 #include "../Dsp/LowPassGate.h"
-#include "../Dsp/PlaitsWaveData.h"
+#include "../Dsp/WaveBankData.h"
 #include "Engine.h"
 
 #include <algorithm>
@@ -40,68 +38,35 @@
 
 namespace ruidocore {
 
-// "8x8x3 wave terrain" wavetable engine - a faithful port of Mutable
-// Instruments' Plaits `WavetableEngine` (plaits/dsp/engine/
-// wavetable_engine.h/.cc, MIT, github.com/pichenettes/eurorack), per the
-// user's explicit request (2026-08-27, "prefiro fazer tudo o mais fiel
-// possivel aos modulos da mutable" / "as wave forms do plaits nao sao
-// disponibilizadas?" - they are, and are used here directly, see
-// Dsp/PlaitsWaveData.h). Kept faithful where it matters (the real 192
-// waveforms, the X/Y/Z trilinear terrain read with Hermite phase
-// interpolation, the differentiator-based anti-aliasing trick instead of
-// oversampling), simplified where Plaits' own embedded-specific plumbing
-// doesn't apply here (no BufferAllocator).
+// Read the waveform terrain with trilinear bank interpolation and Hermite phase
+// interpolation. Differentiate integrated waveforms for antialiasing.
+// Source attribution is preserved in the license notice and THIRD_PARTY.md.
 //
-// Fidelity re-review (2026-08-27, "revise os outros modos todos de uma
-// vez"): a direct-source-download comparison found an extra output SVF
-// lowpass stage here that real Plaits' own Render() does NOT have (it
-// goes straight from the differentiator to *out++) - removed, since
-// nothing documented it as an intentional deviation and it wasn't
-// something the user asked for; the differentiator's own cutoff/gain
-// formula is real Plaits' actual anti-aliasing mechanism, on its own.
+// Output follows the differentiator directly; do not add a separate SVF low-pass stage.
 //
-// Percussive envelope + pitch/timbre/morph "punch" (2026-08-27, "seria
-// legal implementar o lpg em todos os nossos motores, pra termos aquele
-// som natural" - unifying this engine with FmEngine's own LPG/
-// DecayEnvelope machinery instead of the ad hoc fixed/uncontrollable
-// AD-envelope + pitch-drop this file had before): shares the exact same
+// Percussive envelope + pitch/timbre/morph "punch" : shares the exact same
 // `LpgEnvelope`+`LowPassGate` (Dsp/LowPassGate.h) and `DecayEnvelope`
 // (Dsp/DecayEnvelope.h) modules FmEngine.h uses, driven by the SAME
-// per-block decay-time formula from Plaits' own `Voice::Render`
-// (plaits/dsp/voice.cc) - real Plaits' own decay-time formula is Voice-
+// per-block decay-time formula from reference `Voice::Render`
+// (the reference DSP source) - reference decay-time formula is Voice-
 // level, shared across every engine, not engine-specific, so this isn't
 // a shortcut, it's what makes both engines' Decay knob feel consistent.
 //
-// Update cadence - DELIBERATELY block-rate here, not per-sample (unlike
-// FmEngine's own pitch envelope, which updates every sample): real
-// Plaits' `Voice::Render()` recomputes every modulated parameter (note/
-// timbre/morph after CV+envelope) once per its own 24-sample control
-// block (`kBlockSize`), holding them fixed while the engine's own
-// oscillator phase still advances every sample - only the terrain LOOKUP
-// itself (the 8-corner Hermite-interpolated read) is genuinely per-
-// sample work, unavoidable either way. Recomputing the X/Y/Z blend
-// indices every sample instead of every block would only save ~15-20
-// flops/sample (negligible either way - measured, not a real
-// performance concern), so the choice here is about FIDELITY: matching
-// Plaits' true 24-sample control-block architecture exactly (user,
-// 2026-08-27, "pode ser o mais fiel aos hardwares sempre"), not a
-// simplification. (FmEngine's own per-sample update predates this
-// explicit fidelity-always preference and hasn't been revisited to
-// match - a real, documented inconsistency worth reconciling later, not
-// silently left as if intentional.)
+// Update pitch, timbre, morph and envelope modulation once per 24-sample control
+// block. Oscillator phase and waveform interpolation still advance per sample.
 //
-// Parameter mapping - deliberately IDENTICAL to Plaits' own (not
+// Parameter mapping - IDENTICAL to reference (not
 // reinterpreted differently), since the X/Y/Z terrain read only makes
 // sense with this exact assignment:
-//   timbre    -> X position across the 8-wide row (0..7)
-//   morph     -> Y position across the 8 rows within one bank (0..7)
-//   harmonics -> Z position across the 4 banks (0..3, folded/mirrored -
-//                see wave_map_ construction below, matching Plaits'
-//                own fold trick exactly) - NOT modulated by the internal
-//                envelope, matching real Plaits (only FM/TIMBRE/MORPH
-//                are normalled to it, never the bank-select axis).
-//   decay     -> LPG gain/brightness decay time (see LowPassGate.h)
-//   accent    -> output level only
+// timbre -> X position across the 8-wide row (0..7)
+// morph -> Y position across the 8 rows within one bank (0..7)
+// harmonics -> Z position across the 4 banks (0..3, folded/mirrored -
+// see wave_map_ construction below, matching reference
+// own fold trick exactly) - NOT modulated by the internal
+// envelope, matching reference (only FM/TIMBRE/MORPH
+// are normalled to it, never the bank-select axis).
+// decay -> LPG gain/brightness decay time (see LowPassGate.h)
+// accent -> output level only
 class WavetableEngine : public Engine {
 public:
     WavetableEngine() {
@@ -153,7 +118,7 @@ public:
             const size_t blockLength = std::min(static_cast<size_t>(kControlBlockSize), numSamples - i);
 
             // Everything below runs ONCE per control block, matching
-            // real Plaits' own Voice::Render()/kBlockSize cadence (see
+            // reference Voice::Render()/kBlockSize cadence (see
             // class comment) - this block's own LPGEnvelope/
             // DecayEnvelope update, the resulting pitch/timbre/morph
             // "punch," and the X/Y/Z terrain blend indices derived from
@@ -172,26 +137,20 @@ public:
             const float pitchEnvSemitones = parameters.pitchEnvAmount * envValue * envValue * 48.0f;
             const float sampleTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
-            // Harmonics Env (2026-08-27, "não temos essa limitação aqui.
-            // pode adicionar aos outros" - real Plaits never modulates
-            // its bank-select axis via the internal envelope; software
-            // has no such constraint) - sweeps which bank the Z axis
+            // Harmonics Env - sweeps which bank the Z axis
             // reads from over the hit's own decay.
             const float sampleHarmonics = std::clamp(parameters.harmonics + parameters.harmonicsEnvAmount * envValue, 0.0f, 1.0f);
             // Level Env: a linear gain trim on top of the LPG's own
             // amplitude decay, held fixed for this control block - same
             // reasoning as FmEngine's own levelEnvAmount application.
-            // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-            // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-            // positive amount, easily masked by this engine's own natural decay;
-            // negative already reaches full silence at max amount so stays as-is).
+            // Widened on the POSITIVE side .
             const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                             ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                             : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
 
             const float baseFrequencyHz = noteToFrequencyHz(parameters.note + pitchEnvSemitones);
 
-            // Same X/Y/Z assignment and 6.9999 scaling as Plaits' own
+            // Same X/Y/Z assignment and 6.9999 scaling as reference
             // Render() - 6.9999 (not 7.0) keeps the integral part from
             // ever reaching 7 for the fractional blend's +1 neighbour to
             // stay in range.
@@ -225,7 +184,7 @@ public:
                 if (phase01 >= 1.0f)
                     phase01 -= 1.0f;
 
-                const float p = phase01 * static_cast<float>(kPlaitsWaveTableSize);
+                const float p = phase01 * static_cast<float>(kWaveBankTableSize);
                 const int pInt = static_cast<int>(p);
                 const float pFrac = p - static_cast<float>(pInt);
 
@@ -239,8 +198,8 @@ public:
 
                 float mix = lerp(xyz0, xyz1, zFrac);
 
-                // Differentiator-based anti-aliasing (Plaits' own trick,
-                // faithfully reused, instead of this library's usual
+                // Differentiator-based anti-aliasing (reference trick,
+                // reused, instead of this library's usual
                 // oversample+FIR-decimate - a wavetable read benefits
                 // from a DIFFERENT AA approach than a phase-modulation
                 // oscillator does): a one-pole highpass-ish leak whose
@@ -249,7 +208,7 @@ public:
                 // aliased without ever oversampling the table read
                 // itself.
                 const float gain = (1.0f / (f0 * 131072.0f)) * (0.95f - f0);
-                const float cutoff = std::min(static_cast<float>(kPlaitsWaveTableSize) * f0, 1.0f);
+                const float cutoff = std::min(static_cast<float>(kWaveBankTableSize) * f0, 1.0f);
                 differentiatorLp += ((mix - differentiatorPrevious) - differentiatorLp) * cutoff;
                 differentiatorPrevious = mix;
                 mix = differentiatorLp * gain;
@@ -275,19 +234,19 @@ public:
     }
 
 private:
-    static constexpr int kControlBlockSize = 24; // matches real Plaits' own kBlockSize exactly
+    static constexpr int kControlBlockSize = 24; // matches reference kBlockSize exactly
 
     static float lerp(float a, float b, float t) { return a + (b - a) * t; }
 
     // 4th-order Hermite interpolation across one wave's own phase axis -
     // needs the sample BEFORE and the two samples AFTER the interpolation
     // point, which is exactly why each stored wave carries 4 guard
-    // samples past its own 128 (see Dsp/PlaitsWaveData.h) - ported
-    // faithfully from Plaits' own InterpolateWaveHermite.
+    // samples past its own 128 (see the corresponding DSP header) - ported
+    // from reference InterpolateWaveHermite.
     static float readWave(int x, int y, int z, int phaseIntegral, float phaseFractional) {
         const int waveIndex = x + y * 8 + z * 64;
         const int16_t* table =
-            waveMap[static_cast<size_t>(std::clamp(waveIndex, 0, kPlaitsWaveCount * 4 - 1))];
+            waveMap[static_cast<size_t>(std::clamp(waveIndex, 0, kWaveBankCount * 4 - 1))];
         const float xm1 = static_cast<float>(table[phaseIntegral]);
         const float x0 = static_cast<float>(table[phaseIntegral + 1]);
         const float x1 = static_cast<float>(table[phaseIntegral + 2]);
@@ -302,11 +261,11 @@ private:
     }
 
     // 4 banks x 64 waves/bank (8x8 each) = 256 slots. Banks 0-2 map
-    // directly onto the 192 real waveforms; bank 3 (Plaits' own
+    // directly onto the 192 real waveforms; bank 3 (reference
     // "user-loadable" bank, unused here - no custom wave loading in this
-    // v1) falls back to the exact same reindexing formula Plaits itself
+    // v1) falls back to the exact same reindexing formula reference itself
     // uses when no custom data is loaded (`w = i * 101 % kNumWaves`) -
-    // matching Plaits' own DEFAULT behavior faithfully, not inventing a
+    // matching reference DEFAULT behavior , not inventing a
     // different fallback.
     static void buildWaveMap() {
         static bool built = false;
@@ -316,8 +275,8 @@ private:
         for (int i = 0; i < 4 * 64; ++i) {
             int w = i;
             if (i >= 3 * 64)
-                w = (i * 101) % kPlaitsWaveCount;
-            waveMap[static_cast<size_t>(i)] = wav_integrated_waves + static_cast<size_t>(w) * kPlaitsWaveStride;
+                w = (i * 101) % kWaveBankCount;
+            waveMap[static_cast<size_t>(i)] = wav_integrated_waves + static_cast<size_t>(w) * kWaveBankStride;
         }
     }
 
@@ -333,4 +292,4 @@ private:
     DecayEnvelope decayEnvelope;
 };
 
-} // namespace ruidocore
+} //

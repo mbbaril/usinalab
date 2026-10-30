@@ -6,9 +6,7 @@
 
 namespace ruidocore {
 
-// Selectable distortion character (2026-08-28, "precisamos de bem mais
-// variedade de... distorção" - Drive alone wasn't enough variety; see
-// docs/EFFECTS_FILTERS_MODULATION_REQUIREMENTS.md §4). `Drive` reuses
+// Selectable distortion character . `Drive` reuses
 // the existing real-ported `Overdrive` unchanged. `Wavefolder` and
 // `Bitcrush` are generic, well-known DSP techniques (not hardware
 // clones needing a source to download - no fidelity-discipline gap
@@ -79,4 +77,4 @@ private:
     int bitcrushHoldCounter = 0;
 };
 
-} // namespace ruidocore
+} //

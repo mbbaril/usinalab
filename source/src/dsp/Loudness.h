@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina - loudness as ITU-R BS.1770 measures it: the K-weighting (a high shelf, +4 dB above ~1.7 kHz, where the ear
-// is most sensitive; a high-pass at ~38 Hz, where it is least), the channels' mean squares summed, -0.691 + 10 log10.
-// Three windows, slid every 10 ms over 10 ms sub-blocks: FAST 50 ms (a startle), MOMENTARY 400 ms and SHORT-TERM
-// 3 s (BS.1770 / EBU R128's own). The filters' analogue parameters are the standard's 48 kHz coefficients' (as
-// derived for any rate in the open literature: f0, gain and Q), so any host rate measures the same.
-// Plain C++, no allocation after prepare(); the guard and the tests share it.
+// K-weighted stereo loudness meter following ITU-R BS.1770.
+// LUFS = -0.691 + 10*log10(sum of channel mean squares).
+// Windows: 50 ms fast, 400 ms momentary and 3 s short-term, updated every 10 ms.
+// Derive shelf and high-pass coefficients for the host rate.
+// No allocation after prepare().
 #pragma once
 #include <algorithm>
 #include <array>
@@ -20,7 +19,7 @@ public:
     void prepare(double fs)
     {
         constexpr double kPi = 3.14159265358979323846;
-        // stage 1: the high shelf (f0 1681.97 Hz, +4.0 dB, Q 0.7072); stage 2: the high-pass (f0 38.135 Hz, Q 0.5003)
+        // Stage 1: the high shelf (f0 1681.97 Hz, +4.0 dB, Q 0.7072); stage 2: the high-pass (f0 38.135 Hz, Q 0.5003)
         {
             const double f0 = 1681.974450955533, g = 3.999843853973347, q = 0.7071752369554196;
             const double k = std::tan(kPi * f0 / fs), vh = std::pow(10.0, g / 20.0), vb = std::pow(vh, 0.4996667741545416);
@@ -49,7 +48,7 @@ public:
         fast = mom = shortTerm = background = -200.0;
     }
 
-    // one sample of each channel (K-weighted here); every 10 ms the three windows move. Returns true when they did
+    // One sample of each channel (K-weighted here); every 10 ms the three windows move. Returns true when they did
     bool push(const float* x, int numChannels)
     {
         double e = 0.0;
@@ -59,7 +58,7 @@ public:
         }
         acc += e;
         if (++count < sub) return false;
-        ring[(size_t)pos] = acc / sub;                   // (the sub-block's mean square, channels summed)
+        ring[(size_t)pos] = acc / sub;                   // The sub-block's mean square, channels summed
         pos = (pos + 1) % (int)ring.size();
         filled = std::min(filled + 1, (int)ring.size());
         acc = 0.0;
@@ -71,18 +70,18 @@ public:
         return true;
     }
 
-    // the windows' loudness now (LUFS; -200 for silence)
+    // The windows' loudness now (LUFS; -200 for silence)
     double fastLufs() const { return fast; }
     double momentaryLufs() const { return mom; }
     double shortTermLufs() const { return shortTerm; }
-    // the BACKGROUND: the 3 s before the last 300 ms (what was there before a sound that just began: a jump is
-    // measured against it, never against a window the jump itself already fills)
+    // Background reference: the preceding 3 s excluding the newest 300 ms.
+    // Exclude the current transient from its own loudness-jump reference.
     double backgroundLufs() const { return background; }
 
 private:
     struct Coef { double b0, b1, b2, a1, a2; };
     struct Stage {
-        double s1 = 0, s2 = 0, h1 = 0, h2 = 0;           // (the shelf's, the high-pass's: transposed direct form II)
+        double s1 = 0, s2 = 0, h1 = 0, h2 = 0;           // The shelf's, the high-pass's: transposed direct form II
         double step(const Coef& a, const Coef& b, double x)
         {
             const double y = a.b0 * x + s1;
@@ -94,13 +93,13 @@ private:
             return std::isfinite(z) ? z : (s1 = s2 = h1 = h2 = 0.0);
         }
     };
-    // the last 'blocks' sub-blocks, the newest 'skip' left out
+    // The last 'blocks' sub-blocks, the newest 'skip' left out
     double lufs(int blocks, int skip = 0) const
     {
         const int n = std::min(blocks, std::max(1, filled));
         double s = 0.0;
         for (int i = 1 + skip; i <= n; ++i) s += ring[(size_t)((pos - i + (int)ring.size()) % (int)ring.size())];
-        s /= (blocks - skip);                            // (a window not yet full counts its missing part as silence)
+        s /= (blocks - skip);                            // A window not yet full counts its missing part as silence
         return s > 1e-20 ? -0.691 + 10.0 * std::log10(s) : -200.0;
     }
 
@@ -111,4 +110,4 @@ private:
     double acc = 0.0, fast = -200.0, mom = -200.0, shortTerm = -200.0, background = -200.0;
 };
 
-} // namespace usina
+} // Namespace usina

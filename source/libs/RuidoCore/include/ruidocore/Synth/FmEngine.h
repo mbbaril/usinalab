@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -41,43 +39,14 @@
 
 namespace ruidocore {
 
-// Classic 2-operator FM voice - a FAITHFUL port of Mutable Instruments'
-// Plaits `FMEngine` (plaits/dsp/engine/fm_engine.h/.cc, "Classic 2-op FM,
-// as found in Braids, Rings and Elements" - MIT licensed,
-// github.com/pichenettes/eurorack, read for this library's own synth-
-// engine research, see docs/SYNTH_ENGINE_RESEARCH.md), replacing an
-// earlier from-scratch implementation per the user's explicit request
-// (2026-08-27, "eu não vejo problema em criar uma drum machine
-// totalmente validada" - validated meaning matching Mutable's own
-// proven, battle-tested algorithm, not an independently-derived one).
-// Kept faithful on the actual oscillator/feedback/anti-aliasing math;
-// adapted only where Plaits' own embedded-specific pitch-reference
-// calibration (`NoteToFrequency`'s own `a0`/-9-semitone/-24-semitone
-// offsets, tuned to their own hardware's exact oscillator range) doesn't
-// apply here - this engine uses standard MIDI-note-numbered pitch (see
-// Engine.h's own noteToFrequencyHz) throughout instead, while preserving
-// the actual musically-quantized-ratio MECHANISM unchanged (same LUT,
-// same interpolation).
+// Two-operator FM synthesis with feedback and shared percussive shaping.
+// Source attribution is preserved in the license notice and THIRD_PARTY.md.
 //
-// Percussive envelope: Plaits' own engines are SUSTAINED voices - the
-// percussive shaping (an LPG driven by the voice's own Decay knob) lives
-// in Plaits' `Voice` class, one level up, not inside FMEngine itself.
-// This library's first host is a drum machine, so that LPG (see
-// Dsp/LowPassGate.h, also ported faithfully and kept as its own shared
-// module so any future voice can reuse it) is applied HERE instead,
-// driven by this engine's own `decay` parameter.
+// Apply the shared LPG inside the engine, driven by decay, to shape sustained
+// oscillator output into a percussive voice.
 //
-// Pitch envelope: also real Plaits Voice-level behavior, not invented
-// here - the SAME per-hit decay envelope that drives the LPG is, on real
-// hardware, ALSO normalled to the FM/TIMBRE/MORPH CV inputs whenever
-// nothing else is patched into them, giving a free built-in pitch/
-// timbre "punch." Ported as `pitchEnvAmount` (see Engine.h,
-// Dsp/DecayEnvelope.h) - a bipolar depth knob, 0 by default (matching
-// real hardware's own resting-attenuverter-at-noon = no effect), NOT a
-// fixed/fabricated pitch sweep (an earlier from-scratch version of this
-// file had exactly that hack, unconditionally applied and uncontrollable
-// - removed when this file was rewritten as a faithful port; this is
-// its real, host-controllable replacement).
+// The shared decay envelope drives bipolar pitch, timbre and morph depths.
+// A depth of zero leaves the corresponding control unchanged.
 class FmEngine : public Engine {
 public:
     FmEngine() { postProcessing.alreadyEnveloped = true; }
@@ -114,38 +83,24 @@ public:
             gateOpen = true;
         }
 
-        // Same note-space Plaits' own FM engine uses for the RATIO
+        // Same note-space reference FM engine uses for the RATIO
         // mechanism, just measured from THIS library's standard MIDI
-        // note numbers instead of Plaits' own shifted/embedded-
+        // note numbers instead of reference shifted/embedded-
         // calibrated reference (see class comment).
         const float carrierNote = parameters.note;
 
-        const float carrierFrequencyHzBase = noteToFrequencyHz(carrierNote); // pre-pitch-envelope, only used for the LPG's own pitch-tracked attack below
-
-        // LPG shaping - ported from Plaits' own `Voice::Render`
-        // (plaits/dsp/voice.cc), which computes these once per its
-        // 24-sample control block (`kBlockSize`) and calls
-        // LPGEnvelope::ProcessPing once per block. This engine instead
-        // updates the envelope every single output SAMPLE (see the
-        // per-`i` call below) for smoother continuous shaping instead of
-        // Plaits' own stepped-every-24-samples update, so each of
-        // Plaits' block-rate coefficients is rescaled by 1/kBlockSize -
-        // valid to first order since these are small per-step
-        // integrator coefficients, and it preserves the real-world
-        // attack/decay TIME regardless of update rate. (An earlier
-        // version of this file used fixed made-up coefficients here,
-        // producing a near-instant open+close - an audible click instead
-        // of a percussive envelope - caught from a real by-ear test.)
-        constexpr float kPlaitsBlockSize = 24.0f;
+        const float carrierFrequencyHzBase = noteToFrequencyHz(carrierNote); // Track LPG attack from the base pitch before pitch-envelope modulation.
+        // Higher notes open faster; attack increments are normalized per sample.
+        constexpr float kModelBlockSize = 24.0f;
         const float hf = 0.3f; // LPG colour/brightness bleed - not yet wired to its own knob
-        const float shortDecayBlock = (200.0f * kPlaitsBlockSize / static_cast<float>(sampleRateHz)) *
+        const float shortDecayBlock = (200.0f * kModelBlockSize / static_cast<float>(sampleRateHz)) *
                                        semitonesToRatio(-96.0f * parameters.decay);
-        const float decayTailBlock = (20.0f * kPlaitsBlockSize / static_cast<float>(sampleRateHz)) *
+        const float decayTailBlock = (20.0f * kModelBlockSize / static_cast<float>(sampleRateHz)) *
                                           semitonesToRatio(-72.0f * parameters.decay + 12.0f * hf) -
                                       shortDecayBlock;
-        const float shortDecay = shortDecayBlock / kPlaitsBlockSize;
-        const float decayTail = decayTailBlock / kPlaitsBlockSize;
-        // Plaits' own `attack = NoteToFrequency(note) * kBlockSize * 2` -
+        const float shortDecay = shortDecayBlock / kModelBlockSize;
+        const float decayTail = decayTailBlock / kModelBlockSize;
+        // reference `attack = NoteToFrequency(note) * kBlockSize * 2` -
         // a pitch-tracked attack (higher notes open faster), rescaled the
         // same way.
         const float attack = 2.0f * (carrierFrequencyHzBase / static_cast<float>(sampleRateHz));
@@ -162,21 +117,7 @@ public:
                 continue;
             }
 
-            // Internal decay envelope (2026-08-27, ported from Plaits'
-            // own Voice::Render - see Dsp/DecayEnvelope.h's own
-            // comment): the SAME per-sample-rescaled shortDecay
-            // coefficient the LPG uses above, but at DOUBLE the rate
-            // (`short_decay * 2.0f`, Plaits' own constant) - meant to be
-            // a fast transient "punch," snappier than the LPG's own
-            // amplitude decay. ONE envelope, normalled to FIVE
-            // destinations simultaneously (real Plaits only does
-            // pitch/timbre/morph, a hardware CV-input limit; "não temos
-            // essa limitação aqui. pode adicionar aos outros" extends it
-            // to Harmonics and Level too, since this is software):
-            // pitch (squared + scaled to 48 semitones - a sharp spike,
-            // not a linear ramp), timbre/morph/harmonics (direct/
-            // unsquared, matching Plaits' own simpler formula), and
-            // level (a linear gain trim, applied after the LPG below).
+            // Rescale decay coefficients per sample to preserve timing across sample rates.
             decayEnvelope.process(shortDecay * 2.0f);
             const float envValue = decayEnvelope.value();
             const float pitchEnvSemitones = parameters.pitchEnvAmount * envValue * envValue * 48.0f;
@@ -184,12 +125,7 @@ public:
             const float sampleTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
             const float feedback = 2.0f * sampleMorph - 1.0f; // -1..1
-
-            // Harmonics Env (2026-08-27, "não temos essa limitação aqui.
-            // pode adicionar aos outros" - real Plaits never modulates
-            // Harmonics via its internal envelope, since it has no CV
-            // input for it at all; software has no such constraint, so
-            // it's exposed here too). Sweeps the FM ratio quantizer's
+            // Harmonics Env . Sweeps the FM ratio quantizer's
             // OWN lookup position over time, not the resulting semitone
             // offset directly - a wobble through the musically-quantized
             // ratio table, matching how the Harmonics knob itself
@@ -200,7 +136,7 @@ public:
 
             // hf_taming recomputed every sample (not once per render()
             // call) so it responds to the pitch envelope's own transient
-            // spike too, same as real Plaits (which applies CV/envelope
+            // spike too, same as reference (which applies CV/envelope
             // modulation to `note` BEFORE the FM engine ever computes
             // its own FM index from it) - a spike into a very high
             // instantaneous pitch backs the FM index off right when it
@@ -222,7 +158,7 @@ public:
             // (via the previous carrier sample); positive feedback
             // injects PHASE directly into the modulator instead - two
             // qualitatively different feedback characters from one
-            // bipolar knob's two directions, matching Plaits' own
+            // bipolar knob's two directions, matching reference
             // fm_engine.cc exactly (both mechanisms target the
             // modulator, never the carrier, in the real algorithm).
             const float phaseFeedback = feedback < 0.0f ? 0.5f * feedback * feedback : 0.0f;
@@ -238,7 +174,7 @@ public:
                 const float modulator = sinePm(modulatorPhase, modulatorFeedback * previousSample);
                 const float carrier = sinePm(carrierPhase, previousAmount * modulator);
                 const float sub = sinePm(subPhase, previousAmount * carrier * 0.25f);
-                previousSample += (carrier - previousSample) * 0.05f; // ONE_POLE smoothing, matches Plaits' own feedback-source lowpass
+                previousSample += (carrier - previousSample) * 0.05f; // ONE_POLE smoothing, matches reference feedback-source lowpass
 
                 carrierDownsampler.accumulate(j, carrier);
                 subDownsampler.accumulate(j, sub);
@@ -251,14 +187,11 @@ public:
                                              lpgEnvelope.hfBleed());
 
             // Level Env: an extra linear gain trim layered on TOP of the
-            // LPG's own nonlinear vactrol amplitude decay, not a
-            // replacement for it - real Plaits has nothing like this
+            // LPG's own nonlinear photoresistive cell amplitude decay, not a
+            // replacement for it - reference has nothing like this
             // (no software-only 4th normalled destination), so it's a
             // genuine extra creative control this plugin adds.
-            // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-            // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-            // positive amount, easily masked by this engine's own natural decay;
-            // negative already reaches full silence at max amount so stays as-is).
+            // Widened on the POSITIVE side .
             const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                             ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                             : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
@@ -275,10 +208,10 @@ public:
 private:
     static constexpr int kOversampling = 4;
 
-    // Same SinePM convention as Plaits' own sine_oscillator.h: `pm` is a
+    // Same SinePM convention as reference sine_oscillator.h: `pm` is a
     // phase offset measured in CYCLES (0..1 = 0..360 degrees), not
     // radians - reimplemented with std::sin directly (this library has
-    // no sine LUT) rather than copying Plaits' own lookup-table version,
+    // no sine LUT) rather than copying reference lookup-table version,
     // since a direct std::sin call is simpler and just as correct for a
     // non-embedded target (no LUT-fetch cost pressure here).
     static float sinePm(std::uint32_t phase, float pm) {
@@ -300,4 +233,4 @@ private:
     bool gateOpen = false;
 };
 
-} // namespace ruidocore
+} //

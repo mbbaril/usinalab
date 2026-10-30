@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina - the guard INSIDE a feedback loop (2026-10-20, the owner: feedback is a feature here, microphones
-// included; it must not run away). Every loop path (the output fed back in, a microphone heard through the
-// speakers, a send returning) passes through one before it is added back:
-//   - DC block (a loop integrates DC into a slow thump),
-//   - a soft ceiling (tanh around 0.7: the loop saturates musically instead of growing),
-//   - a governor: an envelope follower that pulls the loop's gain under unity when the loop gets loud, so the
-//     loop gain cannot stay above 1 however the user sets it (the sound breathes instead of exploding),
-//   - a hard clamp at +-1.5 whatever happens.
-// The OutputGuard at the end still stands behind it. Plain C++, no JUCE: the same code can go to firmware.
+// Feedback-path guard: DC blocker, soft saturation, gain governor and final clamp.
+// Above envelope 0.25, effective gain scales by 0.25/env.
+// Soft saturation is centered around 0.7; final clamp is +/-1.5.
+// This precedes feedback summation; OutputGuard remains downstream.
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -26,7 +21,7 @@ public:
     }
     void reset() { dcX = dcY = env = 0.0f; }
 
-    // One sample of the loop: x the signal going back in, amount the user's loop gain (0 .. 1.5).
+    // Process one return sample with requested loop gain in 0..1.5.
     float process(float x, float amount)
     {
         if (!std::isfinite(x)) { reset(); return 0.0f; }
@@ -35,9 +30,9 @@ public:
         dcY = y;
         const float a = std::fabs(y);
         env += (a - env) * (a > env ? att : rel);
-        // governor: above 0.25 the effective loop gain falls as 0.25 / env (the product stays bounded)
+        // Governor: above 0.25 the effective loop gain falls as 0.25 / env (the product stays bounded)
         const float gov = env > 0.25f ? 0.25f / env : 1.0f;
-        const float s = 0.7f * std::tanh(y * amount * gov / 0.7f);   // soft ceiling
+        const float s = 0.7f * std::tanh(y * amount * gov / 0.7f);   // Soft ceiling
         return std::clamp(s, -1.5f, 1.5f);
     }
 
@@ -46,4 +41,4 @@ private:
     float dcR = 0.9987f, dcX = 0.0f, dcY = 0.0f, env = 0.0f, att = 0.01f, rel = 0.0001f;
 };
 
-} // namespace usina
+} // Namespace usina

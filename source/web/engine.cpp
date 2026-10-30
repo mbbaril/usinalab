@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 #include "engine.h"
 #include "seq/SeqCommands.h"
 #include <algorithm>
@@ -44,7 +44,7 @@ const std::vector<Param>& parameters() {
         for(int b=0;b<4;++b) {
             for(int s=0;s<3;++s) {
                 std::string id=std::string(buses[b])+(s?std::to_string(s+1):"")+"_type";
-                p.push_back({id,"Slot "+std::to_string(s+1),groups[b],0,6,(float)(b==0&&s==0?1:b==1&&s==0?2:0),1});
+                p.push_back({id,"Slot "+std::to_string(s+1),groups[b],0,7,(float)(b==0&&s==0?1:b==1&&s==0?2:0),1});
             }
             p.push_back({b==3?"loop_fx_on":std::string(buses[b])+"_on","Ativo",groups[b],0,1,1,1});
             if(b<2) p.push_back({std::string(buses[b])+"_mix","Mix",groups[b],0,1,1,.001f});
@@ -60,7 +60,7 @@ const std::vector<Param>& parameters() {
         const char* vap[]={"position","size","pitch","density","texture","drywet","spread","feedback","reverb"};
         const float vapDefaults[]={.2f,.5f,.5f,.7f,.5f,.5f,.3f,0,.3f};
         for(int i=0;i<9;++i) p.push_back({"vap_"+std::string(vap[i]),vap[i],"VAPOR",0,1,vapDefaults[i],.001f});
-        for(auto id:{"vap_on","vap_freeze","vap_reverse","vap_limit"}) a(id,id,"VAPOR",0,1,std::string(id)=="vap_on"?1:0,1);   // (LIMIT, 28/10: off by default, as the plugin's)
+        for(auto id:{"vap_on","vap_freeze","vap_reverse","vap_limit"}) a(id,id,"VAPOR",0,1,std::string(id)=="vap_on"?1:0,1);   // (LIMIT: off by default, as the plugin's)
         a("vap_mode","Granular / Stretch / Loop / Spectral / Reverb / Resonator","VAPOR",0,5,0,1);
         a("vap_quality","Stereo16 / Mono16 / Stereo8 / Mono8","VAPOR",0,3,0,1);
         a("vap_trig","Internal / Notes / Clock","VAPOR",0,2,1,1);
@@ -92,6 +92,15 @@ const std::vector<Param>& parameters() {
         // Append only: old parameter indices and sessions remain valid.
         a("mpe_mode","MPE INPUT","PERFORM",0,1,0,1);
         a("mpe_bend_range","NOTE BEND (st)","PERFORM",1,96,48,1);
+        a("fxf_on","Ativo","FILTER",0,1,1,1);
+        a("fxf_type","Tipo","FILTER",0,16,1,1);
+        a("fxf_cutoff","Corte (Hz)","FILTER",20,20000,2000,.1f,.2f);
+        a("fxf_reso","Ressonancia","FILTER",0,1,.2f);
+        a("fxf_drive","Drive","FILTER",0,1,0);
+        a("fxf_spread","Spread","FILTER",-1,1,0);
+        a("fxf_follow","Follow","FILTER",-1,1,0);
+        a("fxf_mix","Mix","FILTER",0,1,1);
+        a("fxf_out","Saida (dB)","FILTER",-24,12,0,.1f);
         return p;
     }();
     return result;
@@ -144,7 +153,7 @@ Instrument::Instrument(double rate,int factor):fs(rate),os(factor),pattern(seq::
     for(int c=0;c<2;++c) { up[c].resize(blockSize*os); decim[c].setFactor(os);fbLine[c].resize((size_t)(2*fs)+2);fbGuard[c].prepare(fs); }
     engine.prepare(fs*os,os==1,fs);
     guard.prepare(fs,blockSize); howl.prepare(fs);howlIn.prepare(fs);
-    texture.prepare(fs,blockSize); vapor.prepare(fs,blockSize);room.prepare(fs);distort.prepare(fs);delay.prepare(fs);
+    texture.prepare(fs,blockSize); vapor.prepare(fs,blockSize);room.prepare(fs);distort.prepare(fs);delay.prepare(fs);filterFx.prepare(fs);
     for(auto* m:{&matchDry[0],&matchDry[1],&matchPad[0],&matchPad[1],&matchPar})m->prepare(fs,std::max(4096,(int)std::ceil(.08*fs)));
     for(auto& b:busGain)b.init(1,(int)(fs*.02));
     gain.init(db(get("level")),(int)(fs*.03));inputGain.init(1,(int)(fs*.03));inputMix.init(0,(int)(fs*.03));inputFx.init(0,(int)(fs*.03));
@@ -237,6 +246,10 @@ void Instrument::prepareFx() {
     ek.lowCutHz=mod("dly_lowcut",fm::FD_DLY_TIME+2,20,2000,.3f);ek.highCutHz=mod("dly_highcut",fm::FD_DLY_TIME+3,500,20000,.3f);
     ek.wow=mod("dly_wow",fm::FD_DLY_TIME+4,0,1);ek.mix=mod("dly_mix",fm::FD_DLY_TIME+5,0,1);ek.flutter=mod("dly_flutter",fm::FD_DLY_TIME+6,0,1);
     ek.outputDb=get("dly_out");ek.sync=(int)get("dly_sync");ek.bpm=get("seq_bpm");ek.character=(int)get("dly_character");ek.routing=(int)get("dly_routing");ek.freeze=get("dly_freeze")>.5f;
+    fk.cutoffHz=mod("fxf_cutoff",fm::FD_FXF_CUTOFF,20,20000,.2f);fk.reso=mod("fxf_reso",fm::FD_FXF_CUTOFF+1,0,1);
+    fk.drive=mod("fxf_drive",fm::FD_FXF_CUTOFF+2,0,1);fk.spread=mod("fxf_spread",fm::FD_FXF_CUTOFF+3,-1,1);
+    fk.follow=mod("fxf_follow",fm::FD_FXF_CUTOFF+4,-1,1);fk.mix=mod("fxf_mix",fm::FD_FXF_CUTOFF+5,0,1);
+    fk.type=(int)get("fxf_type");fk.outputDb=get("fxf_out");
 }
 int Instrument::latency(int k) const {return k==1&&texture.active()?texture.latencySamples():k==5&&vapor.active()?vapor.latencySamples():0;}
 void Instrument::fx(int kind,float* l,float* r,int n,bool wet) {
@@ -247,6 +260,7 @@ void Instrument::fx(int kind,float* l,float* r,int n,bool wet) {
     case 3:{auto k=dk;if(wet)k.mix=1;distort.process(l,r,n,k,get("dist_on")>.5f);silent=get("dist_on")<.5f;break;}
     case 5:{auto k=vk;if(wet&&k.mode!=fx::Vapor::kResonator)k.dryWet=1;vapor.process(l,r,n,k,get("vap_trig")?vapGate.data():nullptr,get("vap_on")>.5f);silent=!vapor.active();break;}
     case 6:{auto k=ek;if(wet)k.mix=1;delay.process(l,r,n,k,get("dly_on")>.5f);silent=!delay.active();break;}
+    case 7:{auto k=fk;if(wet)k.mix=1;filterFx.process(l,r,n,k,get("fxf_on")>.5f);silent=!filterFx.active();break;}
     default:silent=true;break; // IR remains unavailable: never claim a convolution that did not run.
     }
     if(wet&&silent){std::fill(l,l+n,0);std::fill(r,r+n,0);}
@@ -279,7 +293,7 @@ void Instrument::render(int n) {
     for(int i=0;i<n;++i){ig[i]=inputGain.next()*inputMix.next();im[i]=inputFx.next();float l=in[0][i]*ig[i]*im[i],r=in[1][i]*ig[i]*im[i];howlIn.process(l,r);out[0][i]+=l;out[1][i]+=r;peak=std::max(peak,std::max(std::abs(in[0][i]),std::abs(in[1][i])));}
     peak=std::min(1.0f,peak*db(get("in_gain")));float release=std::exp(-(float)n/(float)(.15*fs));
     inputEnv=peak>inputEnv?peak:peak+(inputEnv-peak)*release;engine.setInputLevel(inputEnv);
-    int kinds[4][3]{};bool runs[4]{};bool seen[7]{};
+    int kinds[4][3]{};bool runs[4]{};bool seen[8]{};
     const char* ids[4][3]={{"fx_a_type","fx_a2_type","fx_a3_type"},{"fx_b_type","fx_b2_type","fx_b3_type"},{"aux_type","aux2_type","aux3_type"},{"loop_type","loop2_type","loop3_type"}};
     const char* onIds[]={"fx_a_on","fx_b_on","aux_on","loop_fx_on"};
     for(int b=0;b<4;++b){bool any=false;for(int s=0;s<3;++s){int k=get("fx_on")>.5f?(int)get(ids[b][s]):0;if(k==4)k=0;if(k&&seen[k])k=0;if(k)seen[k]=true;kinds[b][s]=k;any|=k!=0;}
@@ -287,7 +301,7 @@ void Instrument::render(int n) {
         if(b<3){busGain[b].set(target);runs[b]=any&&(busGain[b].remaining||target>0);}else runs[b]=any&&target>0;}
     auto placed=[&](int k){for(int b=0;b<4;++b)for(int s=0;s<3;++s)if(runs[b]&&kinds[b][s]==k)return true;return false;};
     if(!placed(1)&&texture.active())texture.reset();if(!placed(2)&&room.active())room.reset();
-    if(!placed(3)&&distort.active())distort.reset();if(!placed(5)&&vapor.active())vapor.reset();if(!placed(6)&&delay.active())delay.reset();
+    if(!placed(3)&&distort.active())distort.reset();if(!placed(5)&&vapor.active())vapor.reset();if(!placed(6)&&delay.active())delay.reset();if(!placed(7)&&filterFx.active())filterFx.reset();
     auto run=[&](int b,float* l,float* r,bool wet){for(int s=0;s<3;++s)if(kinds[b][s])fx(kinds[b][s],l,r,n,wet);};
     int lat[2]{},dist[2]{};bool distPlaced=false;
     for(int b=0;b<2;++b)if(runs[b])for(int s=0;s<3;++s){lat[b]+=latency(kinds[b][s]);distPlaced|=kinds[b][s]==3;dist[b]|=kinds[b][s]==3&&distort.active()&&get("dist_on")>.5f;}
@@ -310,7 +324,7 @@ void Instrument::render(int n) {
         howl.process(x[0],x[1]);for(int c=0;c<2;++c){out[c][i]=(out[c][i]+x[c])*volume;if(!runs[3])fbLine[c][fbPos]=out[c][i];}loopL[i]=out[0][i];loopR[i]=out[1][i];fbPos=(fbPos+1)%length;}
     if(runs[3]){run(3,loopL.data(),loopR.data(),false);for(int i=0;i<n;++i){fbLine[0][(start+i)%length]=loopL[i];fbLine[1][(start+i)%length]=loopR[i];}}
     float* channels[]={out[0].data(),out[1].data()};guard.process(channels,2,n,get("ceiling"));
-    if(guard.takeRunawayFlag()){room.reset();texture.reset();vapor.reset();delay.reset();for(auto& l:fbLine)std::fill(l.begin(),l.end(),0);for(auto& g:fbGuard)g.reset();}
+    if(guard.takeRunawayFlag()){room.reset();texture.reset();vapor.reset();delay.reset();filterFx.reset();for(auto& l:fbLine)std::fill(l.begin(),l.end(),0);for(auto& g:fbGuard)g.reset();}
 }
 float Instrument::meter(int which) const {return which==0?(float)engine.activeVoices():which==1?guard.gainReductionDb():which==2?guard.loudnessCutDb():(float)guard.runawayEvents();}
 }

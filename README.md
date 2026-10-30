@@ -20,7 +20,7 @@ Cada distribuição tem as suas fontes correspondentes; elas valem para a versã
 
 | Distribuição | Fontes |
 |---|---|
-| Web 0.1.48-alpha.6 | [usinalab-source-0.1.48-alpha.6.zip](https://usina.ruido.art.br/usinalab-source-0.1.48-alpha.6.zip), também em MENU → Créditos |
+| Web 0.1.49-alpha.7 | [usinalab-source-0.1.49-alpha.7.zip](https://usina.ruido.art.br/usinalab-source-0.1.49-alpha.7.zip), também em MENU → Créditos |
 | Android 0.1.45 | [usina-android-source-0.1.45.zip](https://usina.ruido.art.br/usina-android-source-0.1.45.zip): o build limpo reproduz o APK (SHA-256 `26e6517452bb0035bd8a644ff9369ac469c50fd958fc5df369d8059f6745cef8`); instruções em `ANDROID-BUILD.md`; chaves de assinatura não incluídas |
 
 Interface e motor estão em `source/`; o build está descrito em `source/BUILD.md`.

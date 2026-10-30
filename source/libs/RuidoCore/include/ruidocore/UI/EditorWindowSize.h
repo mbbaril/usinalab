@@ -1,6 +1,6 @@
 #pragma once
 
-// WHERE A PLUGIN WINDOW OPENS, AND AT WHAT SIZE (2026-09-22).
+// Persist editor size per product and fit it within the usable display area.
 //
 // User, playing on the notebook: "todos os plugins precisam ter janela com
 // resize, ficou ruim de usar no notebook". Every product in this family
@@ -8,28 +8,12 @@
 // other things were wrong, and both of them are about the size the window
 // OPENS at:
 //
-//   1. Several open bigger than a notebook screen. The Volca Kick opened
-//      at 1100x900; on a 1920x1080 panel at 150% scaling the usable area
-//      is about 1280x680, so the window opened taller than the desktop and
-//      its bottom edge - with the resize corner on it - was unreachable.
-//   2. Nothing remembered the size. Resizing it down was a chore repeated
-//      on every single open, in every session, forever.
+// Clamp restored dimensions to the usable display bounds, including scale and taskbar.
 //
-// The Volca Drum already carries a warning about the naive fix: opening at
-// the MAXIMUM resizable size was tried there on 2026-08-20 and rejected
-// ("janela ficou enorme"). So this is deliberately not that. It opens at
-// the size the user last chose, or the product's own preferred size, and
-// in either case never bigger than the display it is opening on.
+// Do not initialize at maximum resizable size; use restored or preferred dimensions.
 //
-// The size lives in a small file per product under the user's application
-// data, NOT in the plugin's saved state. That is a deliberate choice:
-//   - a window size is a fact about the SCREEN, not about the music, so it
-//     should follow the machine rather than travel inside a session that
-//     may be opened on a different one;
-//   - it needs no format version bump in seven products, and this family
-//     has already learned what new file magics cost ([[family-unification]]);
-//   - and Debug and Release carry different VST3 UIDs, so a machine-level
-//     preference is shared between them where session state is not.
+// Persist editor dimensions in per-product application data, separate from session state.
+// Clamp restored size to the current usable display bounds.
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -37,8 +21,7 @@ namespace ruidocore::ui {
 
 class EditorWindowSize {
 public:
-    // `productId` becomes a filename, so keep it short and stable -
-    // "volca-drum", "percutere". Changing it forgets the saved size.
+    // productId is a stable filename component. Changing it resets saved dimensions.
     explicit EditorWindowSize(juce::String productIdIn) : productId(std::move(productIdIn)) {}
 
     // Call from the editor's constructor, INSTEAD of a bare setSize:
@@ -62,10 +45,7 @@ public:
         return {width, height};
     }
 
-    // Call from the editor's DESTRUCTOR, not from resized(): a drag fires
-    // resized() dozens of times and none of those intermediate sizes is a
-    // decision. One write, when the window closes at the size the user
-    // settled on.
+    // Save dimensions when the editor closes, not on every resized() callback.
     void remember(int width, int height) const {
         if (width <= 0 || height <= 0)
             return;
@@ -85,7 +65,7 @@ private:
         const auto* display = displays.getPrimaryDisplay();
         if (display == nullptr)
             return {1280, 700}; // a conservative notebook, if the OS will not say
-        const auto area = display->userBounds.toNearestInt(); // userArea was deprecated in JUCE 9 - same area, as floats
+        const auto area = display->userBounds.toNearestInt(); // Use the floating-point usable display bounds.
         return {juce::jmax(640, area.getWidth() - 24), juce::jmax(400, area.getHeight() - 64)};
     }
 
@@ -116,4 +96,4 @@ private:
     juce::String productId;
 };
 
-} // namespace ruidocore::ui
+} //

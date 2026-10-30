@@ -154,6 +154,13 @@ UsinaProcessor::UsinaProcessor()
     static_assert(kVapKnobs == usina::fm::FD_VAP_REVERB - usina::fm::FD_VAP_POSITION + 1);
     for (int i = 0; i < kVapParams; ++i) pVap[i] = params.getRawParameterValue(kVapIds[i]);
     pDlyOn = params.getRawParameterValue("dly_on");
+    pFxfOn = params.getRawParameterValue("fxf_on");
+    pFxfType = params.getRawParameterValue("fxf_type");
+    pFxfOut = params.getRawParameterValue("fxf_out");
+    {
+        const char* ids[6] = { "fxf_cutoff", "fxf_reso", "fxf_drive", "fxf_spread", "fxf_follow", "fxf_mix" };
+        for (int i = 0; i < 6; ++i) pFxfKnob[(size_t)i] = params.getParameter(ids[i]);
+    }
     pDlySync = params.getRawParameterValue("dly_sync");
     pDlyChar = params.getRawParameterValue("dly_character");
     pDlyRoute = params.getRawParameterValue("dly_routing");
@@ -204,7 +211,7 @@ UsinaProcessor::UsinaProcessor()
 
 UsinaProcessor::~UsinaProcessor()
 {
-    cabineModel.reset();                                  // (the Launchpad let go, while everything it reads exists)
+    cabineModel.reset();                                  // (the pad controller let go, while everything it reads exists)
     stopTimer();
     params.removeParameterListener("oversampling", this);
     params.removeParameterListener("dist_mode", this);
@@ -278,7 +285,7 @@ bool UsinaProcessor::actionMatch(int a, int type, int number, int channel) const
     return c == 0 || c == channel;
 }
 
-// (any thread: the audio thread's MIDI, the Launchpad's handed to the message thread)
+// (any thread: the audio thread's MIDI, the pad controller's handed to the message thread)
 void UsinaProcessor::queueAction(int a, bool pressed, float value)
 {
     const int v = juce::jlimit(0, 127, juce::roundToInt(value * 127.0f));
@@ -320,7 +327,7 @@ void UsinaProcessor::timerCallback()
     applyCcMaps();
     runPendingActions();
     engine.collectSample();                              // (SAMPLE: a recording the audio thread let go, freed here)
-    // the latency the host compensates (28/10): the guard's and the effects' chain (the TEXTURE, the VAPOR behind
+    // the latency the host compensates: the guard's and the effects' chain (the TEXTURE, the VAPOR behind
     // their converters), told only when it changes (a host may restart its graph)
     if (const int lat = guard.latencySamples() + fxChainLatency.load(std::memory_order_relaxed); lat != reportedLatency) {
         reportedLatency = lat;
@@ -403,8 +410,8 @@ int UsinaProcessor::addRoute(int src, int dst, float amount)
     if (r.n >= usina::fm::kMaxRoutes) return -1;
     r.r[(size_t)r.n] = { src, dst, juce::jlimit(-1.0f, 1.0f, amount) };
     ++r.n;                                               // (counted before it is published: the audio thread gets it now,
-    publishRoutes();                                     // not at the next edit - a route added and left as it was
-    return r.n - 1;                                      // stayed silent until then; found by ProcessorTest, 21/10)
+    publishRoutes();                                     // Publish new routes immediately.
+    return r.n - 1;                                      // Index of the appended route.
 }
 
 void UsinaProcessor::setRouteAmount(int index, float amount)
@@ -489,7 +496,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout UsinaProcessor::createLayout
     l.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "rev_color", 1 }, "Reverb Color",
                                                        juce::StringArray { "CLEAN", "TAPE" }, 0));
     l.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "rev_on", 1 }, "Reverb On", true));
-    // SAMPLE's capture (28/10): its LENGTH (FREE, or bars from the host's next bar) and its AUTO LEVEL - the rig's, not
+    // SAMPLE's capture: its LENGTH (FREE, or bars from the host's next bar) and its AUTO LEVEL - the rig's, not
     // the sound's (a preset loaded keeps them)
     l.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "cap_len", 1 }, "Capture Length",
                                                        juce::StringArray { "FREE", "1 BAR", "2 BARS", "4 BARS" }, 0,
@@ -497,11 +504,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout UsinaProcessor::createLayout
     l.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "cap_norm", 1 }, "Capture Auto Level", true));
     // the effects' slots (the FX view): FX A and FX B in series (A > B) or in parallel (A + B), an AUX (a send, the
     // effect wet only, a return), the loop's insert; each slot picks an effect - one effect in one slot at a time, its
-    // parameters its own (the user, 21/10). The lists are not automatable: an effect added to them later never moves
+    // parameters its own . The lists are not automatable: an effect added to them later never moves
     // what a recorded automation means
     {
         auto g = std::make_unique<juce::AudioProcessorParameterGroup>("effects", "EFFECTS", "|");
-        const juce::StringArray kinds { "NONE", "TEXTURE", "ROOM", "DISTORT", "IR", "VAPOR", "DELAY" };   // (FxKind's
+        const juce::StringArray kinds { "NONE", "TEXTURE", "ROOM", "DISTORT", "IR", "VAPOR", "DELAY", "FILTER" };   // (FxKind's
                                                                                                            // order)
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "fx_on", 1 }, "Effects", true));
         g->addChild(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "fx_route", 1 }, "Effects Routing",
@@ -660,7 +667,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout UsinaProcessor::createLayout
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_on", 1 }, "Vapor", true));
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_freeze", 1 }, "Vapor Freeze", false));
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_reverse", 1 }, "Vapor Reverse", false));
-        // LIMIT (fx/Vapor.h, 28/10): the fed-back signal held near the input's level; off by default (the user)
+        // LIMIT (fx/Vapor.h): the fed-back signal held near the input's level; off by default
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "vap_limit", 1 }, "Vapor Limit", false));
         juce::StringArray modes, qualities;
         for (int m = 0; m < usina::fx::Vapor::kNumModes; ++m) modes.add(usina::fx::Vapor::modeName(m));
@@ -725,10 +732,44 @@ juce::AudioProcessorValueTreeState::ParameterLayout UsinaProcessor::createLayout
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "dly_freeze", 1 }, "Delay Freeze", false));
         l.add(std::move(g));
     }
+    // Filter effect (fx/Filter.h). Type is not automatable.
+    {
+        auto g = std::make_unique<juce::AudioProcessorParameterGroup>("fxfilter", "FILTER", "|");
+        const auto pctText = [](float v, int) { return juce::String(juce::roundToInt(v * 100.0f)) + " %"; };
+        const auto signedPct = [](float v, int) {
+            const int p = juce::roundToInt(v * 100.0f);
+            return (p > 0 ? "+" : "") + juce::String(p) + " %";
+        };
+        g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "fxf_on", 1 }, "Filter", true));
+        juce::StringArray types;
+        for (int t = 0; t < usina::fx::Filter::kNumTypes; ++t) types.add(usina::fx::Filter::typeName(t));
+        g->addChild(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "fxf_type", 1 }, "Filter Type", types, 1,
+                                                                 juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_cutoff", 1 }, "Filter Cutoff",
+                                        R(20.0f, 20000.0f, 0.1f, 0.2f), 2000.0f,
+                                        juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float v, int) {
+                                            return v < 1000.0f ? juce::String(juce::roundToInt(v)) + " Hz"
+                                                               : juce::String(v / 1000.0f, 2) + " kHz";
+                                        })));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_reso", 1 }, "Filter Reso", R(0.0f, 1.0f, 0.001f), 0.2f,
+                                        juce::AudioParameterFloatAttributes().withStringFromValueFunction(pctText)));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_drive", 1 }, "Filter Drive", R(0.0f, 1.0f, 0.001f), 0.0f,
+                                        juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float v, int) {
+                                            return "x" + juce::String(std::exp2(3.0f * v), 2);
+                                        })));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_spread", 1 }, "Filter Spread", R(-1.0f, 1.0f, 0.001f), 0.0f,
+                                        juce::AudioParameterFloatAttributes().withStringFromValueFunction(signedPct)));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_follow", 1 }, "Filter Follow", R(-1.0f, 1.0f, 0.001f), 0.0f,
+                                        juce::AudioParameterFloatAttributes().withStringFromValueFunction(signedPct)));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_mix", 1 }, "Filter Mix", R(0.0f, 1.0f, 0.001f), 1.0f,
+                                        juce::AudioParameterFloatAttributes().withStringFromValueFunction(pctText)));
+        g->addChild(std::make_unique<P>(juce::ParameterID { "fxf_out", 1 }, "Filter Output", R(-24.0f, 12.0f, 0.1f), 0.0f,
+                                        juce::AudioParameterFloatAttributes().withLabel("dB")));
+        l.add(std::move(g));
+    }
     // the sequencer (src/seq): on; in a host it follows the host's transport and tempo, always; in the Standalone, its
-    // own clock: its tempo and PLAY (not automatable: the Standalone has no automation, and a host never reads them).
-    // (The CLOCK choice of 21/10 is gone, 22/10: a host's sequencer follows the host - a session that saved it loads
-    // without it)
+    // Standalone tempo and transport are not automatable. Hosted instances
+    // always follow the host transport.
     {
         auto g = std::make_unique<juce::AudioProcessorParameterGroup>("sequencer", "SEQUENCER", "|");
         g->addChild(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "seq_on", 1 }, "Sequencer", false));
@@ -791,6 +832,11 @@ bool UsinaProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 
 void UsinaProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock)
 {
+    audioLoadMeasurer.reset(sampleRate, juce::jmax(1, maximumExpectedSamplesPerBlock));
+    diagnosticRate.store((float)sampleRate, std::memory_order_relaxed);
+    diagnosticBlock.store(maximumExpectedSamplesPerBlock, std::memory_order_relaxed);
+    diagnosticLoad.store(0.0f, std::memory_order_relaxed);
+    diagnosticPeak.store(0.0f, std::memory_order_relaxed);
     for (auto& line : fbLine)                            // everything sized here, nothing in processBlock (rule 6)
         line.assign((size_t)(kMaxFbSeconds * sampleRate) + 2, 0.0f);
     fbPos = 0;
@@ -807,6 +853,7 @@ void UsinaProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamples
     ir.prepare(sampleRate, maximumExpectedSamplesPerBlock);
     vapor.prepare(sampleRate, maximumExpectedSamplesPerBlock);
     delayFx.prepare(sampleRate);
+    filterFx.prepare(sampleRate);
     for (auto* b : { &fxDryL, &fxDryR, &fxAL, &fxAR, &fxBL, &fxBR, &fxAuxL, &fxAuxR, &fxLoopL, &fxLoopR, &fxParL, &fxParR })
         b->assign((size_t)juce::jmax(1, maximumExpectedSamplesPerBlock), 0.0f);
     {                                                    // (the buses' match: up to 3 latent effects in a bus)
@@ -851,6 +898,8 @@ void UsinaProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamples
 
 void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
+    DiagnosticPublication publication(*this, buffer.getNumSamples());
+    juce::AudioProcessLoadMeasurer::ScopedTimer loadTimer(audioLoadMeasurer, juce::jmax(1, buffer.getNumSamples()));
     juce::ScopedNoDenormals noDenormals;                 // rule 9
     bypassed = false;
     const int n = buffer.getNumSamples();
@@ -1011,7 +1060,7 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
         }
         engine.setCtrlSources(ctrlVal);
     }
-    // the CABINE's notes (DRUMS, KEYS: the Launchpad's, the screen's) join what came, at the block's start
+    // the CABINE's notes (DRUMS, KEYS: the pad controller's, the screen's) join what came, at the block's start
     if (cabNoteFifo[0].getNumReady() + cabNoteFifo[1].getNumReady() > 0) {
         cabMidi.clear();
         cabMidi.addEvents(*incoming, 0, -1, 0);
@@ -1255,6 +1304,21 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
         dlyNow.outputDb = pDlyOut->load();
         dlyOnNow = pDlyOn->load() > 0.5f;
     }
+    // Filter effect: knobs plus matrix offsets on the normalised range.
+    {
+        float v[6];
+        for (int i = 0; i < 6; ++i) v[i] = pFxfKnob[(size_t)i]->getValue();
+        const int first = usina::fm::kFxDst + usina::fm::FD_FXF_CUTOFF;
+        for (int i = 0; i < routesAudio.n; ++i) {
+            const auto& r = routesAudio.r[(size_t)i];
+            if (r.dst >= first && r.dst < first + 6) v[r.dst - first] += r.amount * engine.liveSource(r.src);
+        }
+        float* const to[6] = { &fxfNow.cutoffHz, &fxfNow.reso, &fxfNow.drive, &fxfNow.spread, &fxfNow.follow, &fxfNow.mix };
+        for (int i = 0; i < 6; ++i) *to[i] = pFxfKnob[(size_t)i]->convertFrom0to1(juce::jlimit(0.0f, 1.0f, v[i]));
+        fxfNow.type = juce::jlimit(0, usina::fx::Filter::kNumTypes - 1, juce::roundToInt(pFxfType->load()));
+        fxfNow.outputDb = pFxfOut->load();
+        fxfOnNow = pFxfOn->load() > 0.5f;
+    }
     // the input's gain over the block, sample by sample (the send into the effects and the per-sample loop below
     // both read it), and INPUT -> FX: its share into the effects, crossfaded (30 ms) with the path after them. Sent,
     // it passes its own howl guard first: a microphone howling never reaches the effects unnotched
@@ -1356,6 +1420,7 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
         if (!placed(kFxIr) && ir.active()) ir.reset();
         if (!placed(kFxVapor) && vapor.active()) vapor.reset();
         if (!placed(kFxDelay) && delayFx.active()) delayFx.reset();
+        if (!placed(kFxFilter) && filterFx.active()) filterFx.reset();
         const int m = juce::jmin(cap, (int)fxDryL.size());
         // a bus on l / r, in place: its effects in order, then its MIX against the dry (dryL / dryR; copyDry: taken
         // here first). At MIX 100 % and on, nothing mixed: the effects' output as it is
@@ -1372,7 +1437,7 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
                     busDist[b] |= kinds[b][s] == kFxDistort && distort.active() && distOnNow;
                 }
         const bool distOver = usina::fx::Distort::oversampled(distNow.mode);
-        // what the chain delays the voices by, for the host (28/10; the message thread reports it - timerCallback): in
+        // what the chain delays the voices by, for the host (the message thread reports it - timerCallback): in
         // series the two buses' sum, in parallel the later one (the other padded to it); the AUX is wet only
         fxChainLatency.store(juce::roundToInt(pFxRoute->load()) == 1 ? std::max(busLat[0], busLat[1]) : busLat[0] + busLat[1],
                              std::memory_order_relaxed);
@@ -1388,7 +1453,7 @@ void UsinaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
                 return;
             }
             runBus(kinds[b], l, r, m, false);
-            // (the TEXTURE in this bus: its dry twin - the same converters as its signal, 28/10 - after it ran, so a
+            // (the TEXTURE in this bus: its dry twin - the same converters as its signal,  - after it ran, so a
             // texture just switched on and its twin start together; the rest of the bus's lateness a plain delay)
             int lat = busLat[b];
             bool hasTexture = false;
@@ -1587,7 +1652,7 @@ bool UsinaProcessor::sampleLoad(const juce::File& f)
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(f));
     if (reader == nullptr || reader->sampleRate <= 0.0 || reader->lengthInSamples <= 0) return false;
-    const int len = (int)juce::jmin<juce::int64>(reader->lengthInSamples, (juce::int64)(kSampleMaxSeconds * reader->sampleRate));
+    const int len = (int)std::min<juce::int64>(reader->lengthInSamples, (juce::int64)(kSampleMaxSeconds * reader->sampleRate));
     const int ch = (int)juce::jmax(1u, reader->numChannels);
     juce::AudioBuffer<float> buf(ch, len);
     if (!reader->read(&buf, 0, len, 0, true, true)) return false;
@@ -1761,11 +1826,21 @@ void UsinaProcessor::runFx(int kind, float* l, float* r, int n, bool wetOnly)
             std::fill(l, l + n, 0.0f);
             std::fill(r, r + n, 0.0f);
         }
+    } else if (kind == kFxFilter) {
+        auto s = fxfNow;
+        if (wetOnly) s.mix = 1.0f;
+        filterFx.process(l, r, n, s, fxfOnNow);
+        if (wetOnly && !filterFx.active()) {
+            std::fill(l, l + n, 0.0f);
+            std::fill(r, r + n, 0.0f);
+        }
     }
 }
 
 void UsinaProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
+    DiagnosticPublication publication(*this, buffer.getNumSamples());
+    juce::AudioProcessLoadMeasurer::ScopedTimer loadTimer(audioLoadMeasurer, juce::jmax(1, buffer.getNumSamples()));
     // bypassed, the input passes dry - and through the OutputGuard: nothing ever reaches the output without the end of
     // the chain (rule 22). The engine and the loop stop: the voices are let go (the notes held now do not come back
     // when the bypass ends) and the loop is emptied, so no feedback runs while the plugin is out of the way.
@@ -1792,6 +1867,7 @@ void UsinaProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce
         texture.reset();
         vapor.reset();
         delayFx.reset();
+        filterFx.reset();
         texNotesHeld = 0;
         {                                                // (the sequencer stops: its notes end)
             usina::seq::Transport stopped;
@@ -1850,15 +1926,15 @@ juce::ValueTree UsinaProcessor::stateTree()
     st.appendChild(funcs, nullptr);
     st.removeChild(st.getChildWithName("SEQ"), nullptr);   // the sequencer's pattern (v6)
     st.appendChild(seqToTree(seqPatternMsg), nullptr);
-    // the mappings (CTRLS v6, CCMAP and CABACT 22/10) as children of the state, as before; the CABINE's own (22/10)
+    // the mappings (CTRLS v6, CCMAP and CABACT) as children of the state, as before; the CABINE's own
     const auto maps = mappingsTree();
-    for (const char* name : { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD", "CABINE", "PLAY" }) st.removeChild(st.getChildWithName(name), nullptr);
+    for (const char* name : { "CTRLS", "CCMAP", "CABACT", "PADGRID", "CABINE", "PLAY" }) st.removeChild(st.getChildWithName(name), nullptr);
     for (int i = 0; i < maps.getNumChildren(); ++i) st.appendChild(maps.getChild(i).createCopy(), nullptr);
     if (cabineModel != nullptr) st.appendChild(cabineModel->toTree(), nullptr);
-    st.appendChild(playTree.createCopy(), nullptr);    // the PLAY view's (27/10): snapshots, XY, layout
+    st.appendChild(playTree.createCopy(), nullptr);    // the PLAY view's: snapshots, XY, layout
     st.setProperty("irFile", irPath, nullptr);         // the IR's file, by its path (v6; the file itself is the user's)
-    st.setProperty("sampleFile", samplePath, nullptr); // SAMPLE's recording, by its path (27/10; a capture is a file too)
-    juce::StringArray files;                           // the four (28/10): A..D by their paths, and which one plays
+    st.setProperty("sampleFile", samplePath, nullptr); // SAMPLE's recording, by its path (a capture is a file too)
+    juce::StringArray files;                           // the four: A..D by their paths, and which one plays
     for (const auto& sl : slots) files.add(sl.path);
     st.setProperty("sampleFiles", files.joinIntoString("\n"), nullptr);
     st.setProperty("sampleSlot", slotNow, nullptr);
@@ -1878,7 +1954,7 @@ juce::ValueTree UsinaProcessor::mappingsTree() const
         ctrls.appendChild(c, nullptr);
     }
     maps.appendChild(ctrls, nullptr);
-    juce::ValueTree ccmap("CCMAP");                     // MIDI learn on parameters (22/10): each a CC, its channel, the
+    juce::ValueTree ccmap("CCMAP");                     // MIDI learn on parameters: each a CC, its channel, the
     for (const auto& m : ccMaps)                        // parameter by its ID
         if (auto* p = m.param.load(); p != nullptr && m.cc.load() >= 0) {
             juce::ValueTree c("MAP");
@@ -1888,7 +1964,7 @@ juce::ValueTree UsinaProcessor::mappingsTree() const
             ccmap.appendChild(c, nullptr);
         }
     maps.appendChild(ccmap, nullptr);
-    juce::ValueTree cabact("CABACT");                   // the CABINE's actions' triggers (22/10), by the action's index
+    juce::ValueTree cabact("CABACT");                   // the CABINE's actions' triggers, by the action's index
     for (int a = 0; a < kCabActions; ++a) {
         juce::ValueTree c("ACT");
         c.setProperty("type", actType[(size_t)a].load(), nullptr);
@@ -1897,7 +1973,7 @@ juce::ValueTree UsinaProcessor::mappingsTree() const
         cabact.appendChild(c, nullptr);
     }
     maps.appendChild(cabact, nullptr);
-    if (cabineModel != nullptr) maps.appendChild(cabineModel->portsTree(), nullptr);   // (the Launchpad's ports)
+    if (cabineModel != nullptr) maps.appendChild(cabineModel->portsTree(), nullptr);   // (the pad controller's ports)
     return maps;
 }
 
@@ -1926,7 +2002,7 @@ void UsinaProcessor::applyMappings(const juce::ValueTree& maps)
         setActionBinding(a, { c.isValid() ? (int)c.getProperty("type", -1) : -1, (int)c.getProperty("num", 0),
                               (int)c.getProperty("ch", 0) });
     }
-    const auto lp = maps.getChildWithName("LAUNCHPAD");
+    const auto lp = maps.getChildWithName("PADGRID");
     if (lp.isValid() && cabineModel != nullptr && keepsGlobalMappings()) cabineModel->connectLater(lp);
 }
 
@@ -1939,7 +2015,7 @@ bool UsinaProcessor::mappingsEmpty(const juce::ValueTree& maps)
     const auto cabact = maps.getChildWithName("CABACT");
     for (int i = 0; i < cabact.getNumChildren(); ++i)
         if ((int)cabact.getChild(i).getProperty("type", -1) >= 0) return false;
-    return maps.getChildWithName("LAUNCHPAD").getProperty("in").toString().isEmpty();
+    return maps.getChildWithName("PADGRID").getProperty("in").toString().isEmpty();
 }
 
 juce::File UsinaProcessor::globalMappingsFile()
@@ -1954,11 +2030,22 @@ bool UsinaProcessor::exportMappings(const juce::File& file)
     return xml != nullptr && file.getParentDirectory().createDirectory() && xml->writeTo(file);
 }
 
+namespace {
+// States and map files written before the pad grid's ports were saved as PADGRID: the same tree, that child renamed
+juce::ValueTree withCurrentKeys(const juce::ValueTree& t)
+{
+    juce::ValueTree out(t.hasType("LAUNCHPAD") ? juce::Identifier("PADGRID") : t.getType());
+    out.copyPropertiesFrom(t, nullptr);
+    for (int i = 0; i < t.getNumChildren(); ++i) out.appendChild(withCurrentKeys(t.getChild(i)), nullptr);
+    return out;
+}
+}
+
 bool UsinaProcessor::importMappings(const juce::File& file)
 {
     auto xml = juce::XmlDocument::parse(file);
     if (xml == nullptr) return false;
-    const auto maps = juce::ValueTree::fromXml(*xml);
+    const auto maps = withCurrentKeys(juce::ValueTree::fromXml(*xml));
     if (!maps.hasType("MAPPINGS")) return false;
     applyMappings(maps);                                 // (a hand's change: the timer keeps it for new instances too)
     return true;
@@ -1969,9 +2056,9 @@ namespace {
 // the rig's parameters (a user preset neither saves nor loads them: they stay as the session has them)
 const char* const kRigIds[] = { "in_gain", "in_mix", "in_fx", "feedback", "fb_time", "level", "ceiling", "oversampling",
                                 "seq_bpm", "seq_play", "bend_range", "mpe_mode", "mpe_bend_range", "cap_len", "cap_norm" };
-// (PLAY, 28/10: the performance surface - snapshots, XY, the keys' layout - is the player's, not the sound's: a preset
-// neither carries it nor replaces it; found by the web's import test, which refused presets saved since 27/10)
-const char* const kRigChildren[] = { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD", "CABINE", "PLAY" };
+// PLAY snapshots, XY and keyboard layout belong to the performance setup;
+// loading a sound preset preserves them.
+const char* const kRigChildren[] = { "CTRLS", "CCMAP", "CABACT", "PADGRID", "CABINE", "PLAY" };
 bool isRigParam(const juce::ValueTree& c)
 {
     for (const char* id : kRigIds)
@@ -2078,6 +2165,7 @@ void UsinaProcessor::setStateInformation(const void* data, int sizeInBytes)
 
 void UsinaProcessor::applyStateTree(juce::ValueTree st)
 {
+    st = withCurrentKeys(st);
     {
         if (st.hasType(params.state.getType())) {
             // v1 had no preset: it keeps the current one; v2 names it (its values: the preset's); v3 holds the
@@ -2085,7 +2173,7 @@ void UsinaProcessor::applyStateTree(juce::ValueTree st)
             const int ver = (int)st.getProperty("stateVersion", 1);
             const juce::String name = ver >= 2 ? st.getProperty("preset").toString() : juce::String();
             st.removeProperty("preset", nullptr);
-            const juce::String user = st.getProperty("userPreset").toString();   // (22/10; before: none)
+            const juce::String user = st.getProperty("userPreset").toString();   // (before: none)
             st.removeProperty("userPreset", nullptr);
             // the routes (v4; before: none). An unknown source or value is left out, never guessed
             usina::fm::Routes rt;
@@ -2128,11 +2216,11 @@ void UsinaProcessor::applyStateTree(juce::ValueTree st)
             suspendProcessing(true);
             seq.setPatternNow(seqPatternMsg);
             suspendProcessing(false);
-            // the mappings (CTRLS v6, CCMAP and CABACT 22/10; before: none). A session with none keeps the ones there
+            // the mappings (CTRLS v6, CCMAP and CABACT ; before: none). A session with none keeps the ones there
             // are (the rig's: the user's file, read when the instance started); a session's own are not a hand's change
             {
                 juce::ValueTree maps("MAPPINGS");
-                for (const char* name : { "CTRLS", "CCMAP", "CABACT", "LAUNCHPAD" }) {
+                for (const char* name : { "CTRLS", "CCMAP", "CABACT", "PADGRID" }) {
                     const auto c = st.getChildWithName(name);
                     if (c.isValid()) maps.appendChild(c.createCopy(), nullptr);
                     st.removeChild(c, nullptr);
@@ -2140,18 +2228,18 @@ void UsinaProcessor::applyStateTree(juce::ValueTree st)
                 if (!mappingsEmpty(maps)) applyMappings(maps);
                 mapSignature = mappingsTree().toXmlString();
             }
-            // the CABINE's own (22/10; before: none): its layer, mode, scale, the drums' mutes; the Launchpad again
+            // the CABINE's own (before: none): its layer, mode, scale, the drums' mutes; the pad controller again
             const auto cab = st.getChildWithName("CABINE");
             if (cab.isValid() && cabineModel != nullptr) cabineModel->fromTree(cab);
             st.removeChild(cab, nullptr);
-            // the PLAY view's (27/10; before: none, its defaults). Copied into the same tree: the view holds it
+            // the PLAY view's (before: none, its defaults). Copied into the same tree: the view holds it
             const auto play = st.getChildWithName("PLAY");
             if (play.isValid()) playTree.copyPropertiesAndChildrenFrom(play, nullptr);
             st.removeChild(play, nullptr);
             const juce::String irFile = st.getProperty("irFile").toString();   // (the IR's file; before: none)
             st.removeProperty("irFile", nullptr);
             const juce::String sampleFile = st.getProperty("sampleFile").toString();   // (SAMPLE's; before: none)
-            // the four (28/10; before: the one, as A)
+            // the four (before: the one, as A)
             juce::StringArray files;
             files.addLines(st.getProperty("sampleFiles", sampleFile).toString());
             const int slotWanted = juce::jlimit(0, kSampleSlots - 1, (int)st.getProperty("sampleSlot", 0));
@@ -2176,9 +2264,7 @@ void UsinaProcessor::applyStateTree(juce::ValueTree st)
                 irPath = irFile;
                 irMissing = !ok;
             }
-            // the feedback opens disarmed: a session saved with it on loads with it at 0 (docs/FEEDBACK.md, option 5;
-            // the user, 20/10: off by default until the safety study is done). The loop is armed by a hand, never
-            // by a file
+            // Restore feedback disarmed. Only an explicit action can arm the loop.
             if (auto* fb = params.getParameter("feedback"))
                 fb->setValueNotifyingHost(fb->convertTo0to1(0.0f));
             const int idx = name.isNotEmpty() ? lib.indexOf(name) : -1;

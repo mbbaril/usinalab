@@ -3,7 +3,7 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const file=p=>new URL(p,import.meta.url),hash=p=>createHash('sha256').update(readFileSync(file(p))).digest('hex');
-const ids=['tex_size','tex_pitch','tex_time_amt','tex_size_amt','tex_shape_amt','tex_pitch_amt','tex_density','tex_gain','vap_pitch'];
+const ids=['tex_size','tex_pitch','tex_time_amt','tex_size_amt','tex_shape_amt','tex_pitch_amt','tex_density','tex_gain','vap_pitch','fxf_drive'];
 const tables=Object.fromEntries(ids.map(id=>[id,Array(1001).fill(null)]));
 for(const line of readFileSync(file('../build-web/parity/fx-processor-ui.tsv'),'utf8').trim().split(/\r?\n/)) {
   const[id,value,text]=line.split('\t');if(tables[id])tables[id][Math.round(+value*1000)]=text;

@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -38,18 +36,8 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits' `GrainEnvelope`,
-// `AdditiveSawOscillator`, `FastSineOscillator` (ADDITIVE mode), and
-// `SwarmVoice` (plaits/dsp/engine/swarm_engine.h, MIT licensed,
-// github.com/pichenettes/eurorack, downloaded and read directly) - the
-// building blocks of the "swarm of sawtooths and sines" engine. Kept
-// together in one file since real Plaits keeps them together too (all
-// four exist only to serve SwarmEngine).
-
-// Own xorshift32 PRNG, matching this library's own established
-// convention elsewhere (AnalogSnareDrum/AnalogHiHat/ClockedNoise/
-// Particle) - only the statistical character matters, not a bit-exact
-// match to Plaits' own generator.
+// SwarmVoice DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 class SwarmRandom {
 public:
     static float next01() {
@@ -114,7 +102,7 @@ public:
         if (sizeRatio >= 1.0f) {
             float p = (phase - 0.5f) * sizeRatio;
             p = std::clamp(p, -1.0f, 1.0f);
-            // real Plaits' own `Sine(phase)` (a 512-entry LUT lookup) -
+            // reference `Sine(phase)` (a 512-entry LUT lookup) -
             // std::sin is this port's established direct substitute
             // (see FmEngine.h's own precedent), same convention.
             const float e = std::sin(2.0f * kPi * (0.5f * p + 1.25f));
@@ -137,7 +125,7 @@ private:
 };
 
 // PolyBLEP-corrected sawtooth, additively accumulated into the output
-// buffer (matches real Plaits' own `+=` accumulation, since several
+// buffer (matches reference `+=` accumulation, since several
 // SwarmVoice instances share one output buffer).
 class AdditiveSawOscillator {
 public:
@@ -170,7 +158,7 @@ private:
 };
 
 // "Magic circle" coupled-form sine oscillator - a self-correcting
-// rotation-matrix recurrence, exact port of real Plaits'
+// rotation-matrix recurrence, exact port of reference
 // `FastSineOscillator` (ADDITIVE mode only - the mode SwarmVoice uses).
 class MagicCircleSineOscillator {
 public:
@@ -188,7 +176,7 @@ public:
         }
 
         const float fPi = frequency * kPi;
-        const float epsilon = fPi * (2.0f - (2.0f * 0.96f / 6.0f) * fPi * fPi); // Fast2Sin, real Plaits' own 3rd-order approximation
+        const float epsilon = fPi * (2.0f - (2.0f * 0.96f / 6.0f) * fPi * fPi); // Fast2Sin, reference 3rd-order approximation
 
         const float norm = x * x + y * y;
         if (norm <= 0.5f || norm >= 2.0f) {
@@ -245,4 +233,4 @@ private:
     MagicCircleSineOscillator sine;
 };
 
-} // namespace ruidocore
+} //

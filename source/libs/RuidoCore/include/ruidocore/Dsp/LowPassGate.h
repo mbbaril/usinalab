@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -35,27 +33,15 @@
 
 namespace ruidocore {
 
-// A percussive envelope modeled after a real analog low-pass gate's
-// vactrol (an LED+photoresistor opto-coupler - the actual component real
-// LPG circuits like the Buchla 292/Serge resonant EQ use): gain AND
-// filter cutoff frequency rise and fall TOGETHER from one nonlinear
-// state variable, not independently - a struck/plucked sound that gets
-// duller as it gets quieter, the way a real vactrol-driven LPG (and real
-// physical objects) actually behave, not just a volume envelope with a
-// separately-configured filter.
+// Models a photoresistive low-pass gate: one nonlinear state couples gain
+// and cutoff, reducing brightness as the amplitude decays.
 //
-// Ported faithfully from Mutable Instruments' Plaits
-// (plaits/dsp/envelope.h's `LPGEnvelope`, MIT licensed,
-// github.com/pichenettes/eurorack, read for this library's own synth-
-// engine research, see docs/SYNTH_ENGINE_RESEARCH.md) - kept as a
-// shared module here (not duplicated per engine) specifically so any
-// future percussive voice (not just FM) can reuse the same real
-// mechanism, per the user's own explicit request (2026-08-27, "esse lpg
-// pode ser inclusive ser portado pra outras vozes").
+// Low-pass gate envelope with pitch-dependent opening and slower closing response.
+// See THIRD_PARTY.md and the preserved license notice for source attribution.
 class LpgEnvelope {
 public:
     void reset() {
-        vactrolState = 0.0f;
+        optoState = 0.0f;
         gainValue = 1.0f;
         frequencyValue = 0.5f;
         hfBleedValue = 0.0f;
@@ -64,7 +50,7 @@ public:
 
     void trigger() { rampingUp = true; }
 
-    // `attack`: how fast the vactrol opens on trigger (per-sample
+    // `attack`: how fast the photoresistive cell opens on trigger (per-sample
     // increment, NOT a time in seconds - higher = faster).
     // `shortDecay`/`decayTail`: together shape the decay curve - see
     // process()'s own comment on the nonlinear blend between them.
@@ -73,13 +59,13 @@ public:
     // real hardware is never a perfectly silent brick-wall cut).
     void processPing(float attack, float shortDecay, float decayTail, float hf) {
         if (rampingUp) {
-            vactrolState += attack;
-            if (vactrolState >= 1.0f) {
-                vactrolState = 1.0f;
+            optoState += attack;
+            if (optoState >= 1.0f) {
+                optoState = 1.0f;
                 rampingUp = false;
             }
         }
-        processLevel(rampingUp ? vactrolState : 0.0f, shortDecay, decayTail, hf);
+        processLevel(rampingUp ? optoState : 0.0f, shortDecay, decayTail, hf);
     }
 
     float gain() const { return gainValue; }
@@ -91,30 +77,30 @@ public:
 
 private:
     void processLevel(float level, float shortDecay, float decayTail, float hf) {
-        const float vactrolInput = level;
-        const float vactrolError = vactrolInput - vactrolState;
-        const float vactrolState2 = vactrolState * vactrolState;
-        const float vactrolState4 = vactrolState2 * vactrolState2;
-        const float tail = 1.0f - vactrolState;
+        const float optoInput = level;
+        const float optoError = optoInput - optoState;
+        const float optoState2 = optoState * optoState;
+        const float optoState4 = optoState2 * optoState2;
+        const float tail = 1.0f - optoState;
         const float tail2 = tail * tail;
         // Opening (error > 0) always uses a fast fixed coefficient - a
-        // vactrol's LED lights up quickly. Closing blends `shortDecay`
+        // photoresistive cell's LED lights up quickly. Closing blends `shortDecay`
         // (dominant early, when the state is still near 1 - the "short"
         // part of a two-stage decay) with `decayTail` (dominant once the
         // state has dropped, via the (1 - state^4) weighting - the long
         // tail). This asymmetric open/close + two-stage-decay shape is
         // what makes it sound like a real component, not a plain one-
         // pole envelope.
-        const float vactrolCoefficient =
-            (vactrolError > 0.0f) ? 0.6f : shortDecay + (1.0f - vactrolState4) * decayTail;
-        vactrolState += vactrolCoefficient * vactrolError;
+        const float optoCoefficient =
+            (optoError > 0.0f) ? 0.6f : shortDecay + (1.0f - optoState4) * decayTail;
+        optoState += optoCoefficient * optoError;
 
-        gainValue = vactrolState;
-        frequencyValue = 0.003f + 0.3f * vactrolState4 + hf * 0.04f;
+        gainValue = optoState;
+        frequencyValue = 0.003f + 0.3f * optoState4 + hf * 0.04f;
         hfBleedValue = (tail2 + (1.0f - tail2) * hf) * hf * hf;
     }
 
-    float vactrolState = 0.0f;
+    float optoState = 0.0f;
     float gainValue = 1.0f;
     float frequencyValue = 0.5f;
     float hfBleedValue = 0.0f;
@@ -124,16 +110,16 @@ private:
 // Applies an LpgEnvelope's gain/frequency/hfBleed to a signal: scale by
 // gain, lowpass at frequency, then bleed a bit of the PRE-filter signal
 // back in proportional to hfBleed (a real LPG never fully removes highs
-// even when mostly closed). Ported faithfully from Plaits'
-// `plaits::LowPassGate`, adapted to use this library's own `Svf` instead
-// of stmlib's (functionally equivalent ZDF/TPT topology, already built
+// even when mostly closed). Ported from reference
+// `LowPassGate`, adapted to use this library's own `Svf` instead
+// of the reference's (functionally equivalent ZDF/TPT topology, already built
 // here - see Svf.h).
 class LowPassGate {
 public:
     void reset() { filter.reset(); }
 
     float process(float in, float gain, float frequency, float hfBleed) {
-        // 0.4f matches Plaits' own fixed `set_f_q<FREQUENCY_DIRTY>(frequency, 0.4f)` call exactly (same resonance-parameter convention this library's own Svf already uses: resonance, not raw Q).
+        // 0.4f matches reference fixed `set_f_q<FREQUENCY_DIRTY>(frequency, 0.4f)` call exactly (same resonance-parameter convention this library's own Svf already uses: resonance, not raw Q).
         filter.setFrequencyAndResonance(std::clamp(frequency, 0.0001f, 0.49f), 0.4f);
         const float s = in * gain;
         const float lp = filter.process(s, Svf::Mode::LowPass);
@@ -144,4 +130,4 @@ private:
     Svf filter;
 };
 
-} // namespace ruidocore
+} //

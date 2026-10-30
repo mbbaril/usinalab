@@ -1,6 +1,6 @@
 #pragma once
 
-// Mute and solo, saved with the host session (2026-09-23).
+// Mute and solo, saved with the host session .
 //
 // Mute and solo live in the Sequencer, not in the Pattern - deliberately,
 // because they are performance state: a pattern copied, banked or recalled
@@ -23,7 +23,7 @@
 //   - a NEWER build reading an OLDER session finds no magic at the end and
 //     leaves mute and solo exactly as the restore left them.
 //
-// Deliberately JUCE-free, like the rest of ruidocore_seq: bytes in, bytes out.
+// host framework-free, like the rest of the shared library_seq: bytes in, bytes out.
 
 #include <array>
 #include <cstddef>
@@ -84,4 +84,4 @@ struct MuteSoloState {
     }
 };
 
-} // namespace ruidocore
+} //

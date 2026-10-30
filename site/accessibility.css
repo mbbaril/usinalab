@@ -1,0 +1,27 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+.instrument-app :is(button,select,input,summary,a,[role="slider"],[role="button"]):focus-visible{outline:2px solid #fff;outline-offset:-2px}
+.instrument-app .mod-add,.instrument-app :is(.native-operator-board .operator-native-controls .field,.native-operator-board .operator-native-layout,.fx-texture-board .texture-native-layout) .mod-add{min-width:24px;max-width:none;min-height:24px;flex-shrink:0}
+.instrument-app .key:not(.black){color:#333}
+.instrument-app .play-key.black,.instrument-app .source-scope figcaption,.instrument-app .scope-view-tools button{color:#c5cbbd}
+@media(pointer:coarse){.instrument-app .mod-add,.instrument-app :is(.native-operator-board .operator-native-controls .field,.native-operator-board .operator-native-layout,.fx-texture-board .texture-native-layout) .mod-add,.instrument-app :is(.rail-button,.play-toggle,.play-snap){min-height:32px;min-width:32px}}
+
+.play-xy-axes{display:flex;gap:4px;align-items:center}.play-xy-axis{border:1px solid #72776a;color:#ddd;font:10px var(--mono);min-width:28px;min-height:28px;display:grid;place-items:center;cursor:ew-resize}
+.fx-slot-actions{font:10px var(--mono);border-top:1px solid #4a5c00;padding-top:6px}.fx-slot-actions summary{cursor:pointer;min-height:32px;display:flex;align-items:center;color:#c2f000}.fx-slot-actions select,.fx-slot-actions button{display:block;width:100%;min-height:36px;margin-top:4px;font:10px var(--mono)}.fx-slot-actions button:disabled{opacity:.45}.fx-slot-result{font:10px var(--mono);color:#ccc;overflow-wrap:anywhere}.fx-slot-result:empty{display:none}
+
+
+@media(min-width:900px) and (min-height:521px){.play-view:not(.compact):not(.keys-only) .play-morph-foot{grid-template-columns:1fr auto}.play-view:not(.compact):not(.keys-only) .play-glide{grid-column:1/-1}.play-view:not(.compact):not(.keys-only) .play-xy-tools{grid-column:2}}
+@media(max-width:599px){.play-morph-foot{display:grid;grid-template-columns:1fr auto;gap:3px}.play-glide{grid-column:1/-1}.play-xy-axis{font-size:8px;min-width:28px}.play-xy-tools{justify-content:flex-end}}
+
+@media(max-width:599px) and (min-height:521px){.play-morph{grid-template-rows:16px 1fr 1fr 76px}}
+
+.instrument-app .native-operator-board .operator-native-controls .field:has(>.mod-add){grid-template-columns:minmax(0,1fr) 24px}
+@media(pointer:coarse){.instrument-app .native-operator-board .operator-native-controls .field:has(>.mod-add){grid-template-columns:minmax(0,1fr) 32px}}
+
+/* Preserve minimum targets across compact panel layouts. */
+.instrument-app .mod-add{min-width:24px!important;min-height:24px!important}
+@media(min-width:900px){.instrument-app :is(.native-operator-board,.native-filter-board,.mod-board) .field:has(>.mod-add){grid-template-columns:minmax(0,1fr) 24px}}
+@media(pointer:coarse){.instrument-app .mod-add{min-width:32px!important;min-height:32px!important}.instrument-app :is(.native-operator-board,.native-filter-board,.mod-board) .field:has(>.mod-add){grid-template-columns:minmax(0,1fr) 32px}}
+
+.instrument-app .source-chip{color:#d9dfca}
+.instrument-app .texture-native-layout select{min-height:24px!important}
+@media(pointer:coarse){.instrument-app .texture-native-layout select{min-height:32px!important}}

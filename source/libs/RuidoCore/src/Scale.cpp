@@ -180,4 +180,4 @@ const char* noteName(int pitchClass) {
     return names[pitchClass];
 }
 
-} // namespace ruidocore
+} //

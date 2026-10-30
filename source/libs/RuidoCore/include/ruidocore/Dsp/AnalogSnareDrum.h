@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -38,46 +36,14 @@
 
 namespace ruidocore {
 
-// A faithful-effort port of Mutable Instruments' Plaits `AnalogSnareDrum`
-// (plaits/dsp/drums/analog_snare_drum.h, MIT licensed,
-// github.com/pichenettes/eurorack) - reconstructed from researched
-// formulas (this library's own established fidelity discipline, see
-// docs/SYNTH_ENGINE_RESEARCH.md), not copied verbatim. Five resonant
-// modes (shell partials at ratios 1.00/2.00/3.18/4.16/5.62 x f0) mixed
-// with filtered noise, same "trigger pulse excites a resonator" family
-// as AnalogBassDrum.h.
+// AnalogSnareDrum DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
-// Knob mapping - confirmed against Mutable's own official Plaits manual
-// (pichenettes.github.io/mutable-instruments-documentation, "Snare drum
-// (analog)" model, 2026-08-27, user: "consulte o manual" -> "sempre" -
-// now this port's standing practice), NOT guessed from source-reading
-// alone (an earlier version of this file had harmonics/morph swapped -
-// caught by the manual check):
-//   timbre    -> "balance between the different modes of the drum" ->
-//                this port's own `tone` (mode-gain shaping)
-//   harmonics -> "balance of the harmonic and noisy components" ->
-//                this port's own `snappy` (shell vs noise mix)
-//   morph     -> "decay time" -> this port's own `decay` (mode Q/ring +
-//                noise envelope time) - NOT this library's own
-//                dedicated `EngineParameters::decay`, which real Plaits
-//                never routes into this engine (LPG disabled for drum
-//                models, same as AnalogBassDrum.h).
+// Timbre controls modal gain balance, harmonics controls shell/noise mix,
+// and morph controls modal decay and noise-envelope time.
 //
-// Fidelity re-review (2026-08-27, "faça o mesmo método de baixar o
-// código" - direct source download, not research/reasoning). Found and
-// fixed several real discrepancies from the earlier researched port:
-// (1) `q` uses a "decay_xt" curved remap of `decay`
-// (`decay*(1+decay*(decay-1))`), NOT raw `decay` directly - the earlier
-// port skipped this entirely; (2) the excitation constants were wrong -
-// real is `(pulseHp + 0.006f*pulse)` for mode 0 and `0.026f*pulse` for
-// modes 1-4, not the earlier port's guessed 0.1f/0.02f; (3) each mode's
-// resonator output has an un-filtered `excitation*exciterLeak` term
-// added directly into the shell sum (the earlier port's own comment
-// claimed this term wasn't real - it IS, just applied per-mode inside
-// the shell sum rather than at the noise stage, computed from the RAW
-// pre-adjustment `snappy`); (4) `gain[2..4]`'s real progression is
-// repeated squaring (t, t^2, t^4), not t^(m-1) - the earlier port's
-// `pow(t, m-1)` gives t^1/t^2/t^3, wrong for gain[4].
+// Preserve the curved decay-to-Q mapping, repeated-squaring modal gains
+// and separate transient paths for the fundamental and higher modes.
 class AnalogSnareDrum {
 public:
     void init(double sampleRate) {
@@ -106,7 +72,7 @@ public:
     // tone/snappy/decay: 0..1 - see class comment for the knob mapping
     // this port assigns.
     float process(float f0, float tone, float snappy, float decay) {
-        // Curved remap of `decay` that feeds `q` - matches real Plaits'
+        // Curved remap of `decay` that feeds `q` - matches reference
         // own `decay_xt` exactly (a mild S-curve, not just raw decay).
         const float decayXt = decay * (1.0f + decay * (decay - 1.0f));
         // Un-filtered leak term mixed directly into each mode's own
@@ -136,7 +102,7 @@ public:
             float t = 3.0f * (tone - 2.0f / 3.0f);
             gain[0] = 1.5f - 0.5f * t;
             gain[1] = 2.15f - 0.7f * t;
-            // Repeated squaring (t, t^2, t^4), matching real Plaits'
+            // Repeated squaring (t, t^2, t^4), matching reference
             // `for (i=2..): gain[i]=tone; tone*=tone;` exactly - NOT
             // t^(m-1) (that would make gain[4] = t^3, which is wrong).
             for (int m = 2; m < 5; ++m) {
@@ -167,7 +133,7 @@ public:
             resonators[static_cast<size_t>(m)].setFrequencyAndResonance(modeFrequency, modeQ);
             // Mode 0 (fundamental) gets the sharp high-passed transient
             // plus a small copy of the raw pulse; modes 1-4 get an even
-            // smaller fixed fraction of the raw pulse - real Plaits'
+            // smaller fixed fraction of the raw pulse - reference
             // exact constants (0.006f/0.026f), not guessed.
             const float excitation = m == 0 ? (pulseHp + pulse * 0.006f) : (pulse * 0.026f);
             const float resonated = resonators[static_cast<size_t>(m)].process(excitation, Svf::Mode::BandPass);
@@ -200,9 +166,8 @@ public:
 
 private:
     static float semitonesToRatio(float semitones) { return std::exp2(semitones / 12.0f); }
-    // Exact port of stmlib::SoftClip/SoftLimit (dsp/dsp.h, MIT licensed,
-    // github.com/pichenettes/stmlib) - confirmed via research, not
-    // guessed.
+    // AnalogSnareDrum DSP implementation.
+    // See THIRD_PARTY.md and the preserved source-license notice for attribution.
     static float softClip(float x) {
         if (x < -3.0f)
             return -1.0f;
@@ -212,7 +177,7 @@ private:
     }
 
     // Simple xorshift PRNG - white noise source, no need to match
-    // Plaits' own generator bit-for-bit (only the resulting spectral/
+    // reference generator bit-for-bit (only the resulting spectral/
     // statistical character matters for this use).
     float nextNoiseSample() {
         rngState ^= rngState << 13;
@@ -230,4 +195,4 @@ private:
     std::uint32_t rngState = 0x1234567u;
 };
 
-} // namespace ruidocore
+} //

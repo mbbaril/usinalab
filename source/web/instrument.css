@@ -130,7 +130,7 @@
 .native-filter-board .field:has(.param-toggle) .field-head output{display:none}
 .native-filter-board .operator-native-controls>.field:has(.param-toggle){flex:0 0 74px;max-width:74px}
 
-/* Same two visual layers as the VST: possible reach inside the track, current value on the track. */
+/* Same two visual layers as the plugin: possible reach inside the track, current value on the track. */
 .dial .mod-feedback{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
 .mod-feedback-range{fill:none;stroke:var(--feedback-color);stroke-width:1.6;stroke-linecap:round;opacity:.9}
 .mod-feedback-dot{fill:var(--feedback-color);stroke:#e3eee5;stroke-width:.6}

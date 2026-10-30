@@ -16,7 +16,7 @@ struct RoomReverb::Impl {
     virtual void process(float* l, float* r, int n, float amount, int color) = 0;
     virtual int k() const = 0;
     bool active = false;
-    bool wetOnly = false;                                // (an AUX: the room alone, its mix at the top)
+    bool wetOnly = false;                                // An AUX: the room alone, its mix at the top
 };
 
 namespace {
@@ -24,7 +24,7 @@ namespace {
 template <int K>
 struct ImplK final : RoomReverb::Impl {
     using Rv = port::Reverb<K, port::FORMAT_32_BIT>;
-    static constexpr int kChunk = 24 * K;                // the module's block: 24 samples at 48 kHz, 0.5 ms
+    static constexpr int kChunk = 24 * K;                // The module's block: 24 samples at 48 kHz, 0.5 ms
 
     explicit ImplK(double sampleRate)
         : sr((float)sampleRate), ratio((float)(sampleRate / 48000.0)), memory((size_t)Rv::kBufferSize, 0.0f)
@@ -34,16 +34,16 @@ struct ImplK final : RoomReverb::Impl {
         reset();
     }
 
-    // a damping coefficient of the module's (one pole per sample at 48 kHz) at this rate: the same pole in Hz
+    // A damping coefficient of the module's (one pole per sample at 48 kHz) at this rate: the same pole in Hz
     float damping(float c) const { return ratio == 1.0f ? c : 1.0f - std::pow(1.0f - c, 1.0f / ratio); }
 
-    // the module's processor.cc, its reverb's settings from the knob: caveman = every setting but the digital
+    // Map AMOUNT to reverb settings; analog mode varies all controls except the digital path.
     void configure(float amount, int color)
     {
         const bool caveman = color != RoomReverb::kClean;
         const float reverb_mix = amount * amount * 0.9f;
         const float reverb_time = amount * amount * amount;
-        reverb.set_mix(wetOnly ? 1.0f : reverb_mix);     // (wet only: no dry, the send in full; AMOUNT: the time)
+        reverb.set_mix(wetOnly ? 1.0f : reverb_mix);     // Wet only: no dry, the send in full; AMOUNT: the time
         reverb.set_time(caveman ? (0.45f + 0.5f * reverb_time) : (0.3f + 0.6f * reverb_time));
         reverb.set_lp(caveman ? lpTape : lpClean);
     }
@@ -52,15 +52,14 @@ struct ImplK final : RoomReverb::Impl {
     {
         reverb.Clear();
         reverb.Reset(sr);
-        preLimiter.Init(1.0f / (sr * 4.0f), 0.9f);       // (processor.cc: pre_reverb_limiter_, output_limiter_)
+        preLimiter.Init(1.0f / (sr * 4.0f), 0.9f);       // Processor.cc: pre_reverb_limiter_, output_limiter_
         outLimiter.Init(1.0f / (sr * 6.0f), 0.9f);
         preLimiter.set_rate_ratio(ratio);
         outLimiter.set_rate_ratio(ratio);
         lpClean = damping(0.6f);
         lpTape = damping(0.4f);
-        // the reverb's three gains glide to their values over each block, from 0 after Reset (the module's start):
-        // one silent block at AMOUNT 0 takes them to their resting values, so the first block played does not
-        // fade the voices in
+        // Prime the block gain ramps with silent input at AMOUNT zero to avoid
+        // an unintended fade-in on the first audible block.
         std::fill(frames, frames + kChunk, FloatFrame { 0.0f, 0.0f });
         configure(0.0f, RoomReverb::kClean);
         reverb.Process(frames, (size_t)kChunk);
@@ -72,8 +71,8 @@ struct ImplK final : RoomReverb::Impl {
     {
         amount = std::clamp(std::isfinite(amount) ? amount : 0.0f, 0.0f, 1.0f);
         if (!active) {
-            if (amount <= 0.0f) {                        // (stopped: the voices untouched, bit for bit -
-                if (wetOnly) {                           // or, wet only, nothing: there is no room)
+            if (amount <= 0.0f) {                        // Bypass preserves dry input; wet-only output is silent.
+                if (wetOnly) {                           //
                     std::fill(l, l + n, 0.0f);
                     std::fill(r, r + n, 0.0f);
                 }
@@ -85,7 +84,7 @@ struct ImplK final : RoomReverb::Impl {
         float residue = 0.0f;
         for (int done = 0; done < n;) {
             const int m = std::min(kChunk, n - done);
-            for (int i = 0; i < m; ++i) {                // (what goes into the room is always finite)
+            for (int i = 0; i < m; ++i) {                // What goes into the room is always finite
                 const float a = l[done + i], b = r[done + i];
                 frames[i] = { std::isfinite(a) ? a : 0.0f, std::isfinite(b) ? b : 0.0f };
                 dryL[i] = frames[i].l;
@@ -103,7 +102,7 @@ struct ImplK final : RoomReverb::Impl {
             }
             done += m;
         }
-        if (amount <= 0.0f && residue < 1.0e-6f) {      // the knob at 0 and the tail gone: stop, clean
+        if (amount <= 0.0f && residue < 1.0e-6f) {      // The knob at 0 and the tail gone: stop, clean
             quiet += n;
             if (quiet >= quietNeeded) reset();
         } else {
@@ -123,7 +122,7 @@ struct ImplK final : RoomReverb::Impl {
     int quiet = 0, quietNeeded = 0;
 };
 
-} // namespace
+} // Namespace
 
 RoomReverb::RoomReverb() = default;
 RoomReverb::~RoomReverb() = default;
@@ -144,7 +143,7 @@ void RoomReverb::reset()
 void RoomReverb::process(float* l, float* r, int n, float amount, int color, bool wetOnly)
 {
     if (impl == nullptr) return;
-    if (impl->wetOnly != wetOnly) impl->reset();         // (moved between a slot and the AUX: starts over)
+    if (impl->wetOnly != wetOnly) impl->reset();         // Moved between a slot and the AUX: starts over
     impl->wetOnly = wetOnly;
     impl->process(l, r, n, amount, color);
 }
@@ -153,4 +152,4 @@ bool RoomReverb::active() const { return impl != nullptr && impl->active; }
 
 int RoomReverb::rateMultiplier() const { return impl != nullptr ? impl->k() : 0; }
 
-} // namespace usina::fx
+} // Namespace usina::fx

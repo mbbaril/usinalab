@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - a patch, read from the CALDERA preset language: the same value names as the firmware
-// ("OP1.LEVEL", "ALGO", "MX 1>3" ...; usina16 eng_opx.c OPX_PD), so the library's presets load as they are.
-// The names, ranges and order: FmSchema.h. Read today: what the operators, their envelopes, the algorithms and the
-// matrix need; the voice filter, the LFOs, EG1/EG2 and the macros come with their stages (docs/ARQUITETURA.md).
+// Usina patch values, loaded using stable preset keys such as OP1.LEVEL, ALGO
+// and MX 1>3. Names, ranges and order are defined in FmSchema.h.
 #pragma once
 #include "FmSchema.h"
 #include <array>
@@ -27,7 +25,7 @@ struct VoiceFilterParams {
     int drive = 0;                               // the saturating types' input drive 0..100 (x1 .. x8)
     int cascFb = 0;                              // SK CASC: its output back in, -100..100 (x -2 .. 2)
     int hpEg2Int = 0, hpLfo2Int = 0;             // SK CASC: the high-pass's own EG2, LFO2 depths
-    int cascVca = 0, cascOut = 0;                // SK CASC: the part's VCA (0 GATE, 1 EG2, 2 ENV); its level (+0.75 dB)
+    int cascVca = 0, cascOut = 0;                // SK CASC: the part's VCA (0 GATE, 1 EG2, 2 ENV, 3 SOURCE); its level
     bool cascHot = false;                        // SK CASC: both filters at the signal's level
     int cmosLife = 0;                            // CMOS: its instability 0..100
     Adsr eg2;                                    // EG2: the filter's envelope
@@ -54,6 +52,7 @@ struct OpParams {
     int rateKey = 0;                             // RATE KEY 0..100: the envelope's times by the note (KT CENTER's)
     int damp = 0;                                // MODAL DAMP 0..100: a hand on the object at the key's release
     int sub = 0, pwm = 0;                        // UNISON SUB, PWM 0..100 (FmUnison.h)
+    int width = 0;                               // WIDTH 0..100: UNISON's copies spread, MODAL's pickups apart
     Adsr adsr() const { return { atk, dec, sus, rel, curve, envMode, atkCurve, relCurve, envRetrig }; }
 };
 
@@ -61,6 +60,12 @@ struct Patch {
     std::array<OpParams, 6> op {};               // OP1 first
     int alg = 0;                                 // 0..39 the preset algorithms, 40 = the user matrix
     int lpgMode = 0, lpgDecay = 50, lpgColor = 50;   // the voice's LPG (FmLpg.h): OFF, PING, EG2; 0..100, 0..100
+    int spread = 0, width = 0, pan = 0;              // the voices in stereo: KEY / ALTERNATE / RANDOM; 0..100; -100..100
+    int fltOffset = 0;                               // stereo, stage 2: the right cutoff from the left's, semitones
+    int lpgSrc = 0, lpgRMode = 0, lpgRSrc = 0, lpgRDecay = 0;   // the LPG in stereo: sources, the right's own
+    int cascSrc = 0;                                 // SK CASC's VCA source (CASC VCA 3)
+    // Second voice filter. f2Route: 0 off, 1 series, 2 parallel, 3 stereo (right channel).
+    int f2Route = 0, f2Type = 0, f2Cut = 1000, f2Reso = 0, f2Drive = 0, f2Eg2 = 0, f2Key = 0, f2Mix = 100;
     int phase = 0;                               // 0 every operator from 0, 1 one random phase, 2 each its own
     int algFb = 0;                               // ALG FB 0..100 (algorithms 4, 6, 34)
     int directOut = 1;                           // the matrix: bit k = OP(k+1) is heard

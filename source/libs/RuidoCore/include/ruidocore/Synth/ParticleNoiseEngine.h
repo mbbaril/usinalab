@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -42,27 +40,19 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `ParticleEngine`
-// (plaits/dsp/engine/particle_engine.h/.cc, "Filtered random pulses",
-// MIT licensed, github.com/pichenettes/eurorack, downloaded and read
-// directly) - `kNumParticles` (6) `Particle` instances (see
-// Dsp/Particle.h) summed together, each independently re-randomizing
-// its own resonant filter frequency on every impulse it fires. The one
-// deliberate deviation is the post-mix diffuser: real Plaits' own
-// `Diffuser` runs a custom delay-line DSL disproportionate to port for
-// this one knob - see Dsp/SimpleDiffuser.h's own header for exactly
-// what's kept vs simplified there.
+// ParticleNoiseEngine DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
-// Parameter mapping - matches the official Plaits manual's own
+// Parameter mapping - matches the official reference manual's own
 // description for this model ("Harmonics: spread of the resonant
 // frequencies; Timbre: density of the pulses; Morph: below noon,
 // filter Q with diffusion added; above noon, resonance only"):
-//   harmonics -> spread (how far each impulse's own re-randomized
-//                filter frequency can wander from the base pitch)
-//   timbre    -> density (how often impulses fire)
-//   morph     -> resonance (upper half) / diffusion amount (lower half)
-//   decay     -> LPG gain/brightness decay time
-//   accent    -> output level only
+// harmonics -> spread (how far each impulse's own re-randomized
+// filter frequency can wander from the base pitch)
+// timbre -> density (how often impulses fire)
+// morph -> resonance (upper half) / diffusion amount (lower half)
+// decay -> LPG gain/brightness decay time
+// accent -> output level only
 class ParticleNoiseEngine : public Engine {
 public:
     ParticleNoiseEngine() { postProcessing.alreadyEnveloped = true; }
@@ -126,10 +116,7 @@ public:
             const float sampleTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleHarmonics = std::clamp(parameters.harmonics + parameters.harmonicsEnvAmount * envValue, 0.0f, 1.0f);
-            // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-            // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-            // positive amount, easily masked by this engine's own natural decay;
-            // negative already reaches full silence at max amount so stays as-is).
+            // Envelope depth is bipolar; positive depth uses the extended gain range.
             const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                             ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                             : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
@@ -191,4 +178,4 @@ private:
     bool gateOpen = false;
 };
 
-} // namespace ruidocore
+} //

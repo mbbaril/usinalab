@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -38,19 +36,12 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `Particle`
-// (plaits/dsp/noise/particle.h, "Random impulse train processed by a
-// resonant filter", MIT licensed, github.com/pichenettes/eurorack,
-// downloaded and read directly) - a stochastic impulse generator
-// (probability `density` per sample) whose filter frequency is
-// re-randomized (within `spread` semitones of `frequency`) each time a
-// new impulse fires, held fixed for the rest of that impulse's own
-// filter ring - one of `kNumParticles` running in parallel is what
-// gives ParticleEngine its "cloud of resonant clicks" character.
+// Particle DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 class Particle {
 public:
     // Own xorshift32 PRNG - statistical/spectral character is what
-    // matters here, not bit-exact match to Plaits' own generator (same
+    // matters here, not bit-exact match to reference generator (same
     // reasoning as AnalogSnareDrum/AnalogHiHat/ClockedNoise).
     float nextRandom01() {
         rngState ^= rngState << 13;
@@ -90,4 +81,4 @@ private:
     std::uint32_t rngState = 0x85ebca6bu;
 };
 
-} // namespace ruidocore
+} //

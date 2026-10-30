@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -38,39 +36,11 @@
 
 namespace ruidocore {
 
-// A faithful-effort port of Mutable Instruments' Plaits `HiHat`
-// (plaits/dsp/drums/hi_hat.h, MIT licensed, github.com/pichenettes/
-// eurorack), specifically the `hi_hat_1_` configuration
-// (`HiHat<SquareNoise, SwingVCA, resonance=true, twoStageEnvelope=false>`)
-// real Plaits itself uses for its own `out` channel - six square-wave
-// oscillators at fixed inharmonic ratios (a classic 808/909-style
-// "metallic" cluster) crossfaded against clocked noise, shaped by a
-// resonant band-pass ("tone") and a decay envelope, finished with a
-// high-pass filter. Knob mapping confirmed against the official Plaits
-// manual, per this project's own standing practice (see
-// AnalogSnareDrum.h's own header comment): Harmonics="balance of the
-// metallic and filtered noise" -> `noisiness`, Timbre="high-pass filter
-// cutoff" -> `tone`, Morph="decay time" -> `decay`.
+// AnalogHiHat DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
-// Fidelity re-review (2026-08-27, "faça o mesmo método de baixar o
-// código" - direct source download resolved every gap the earlier
-// researched port had disclosed, and found more besides):
-// (1) the metallic cluster's 6 oscillators run at `2.0f * f0`, not
-// `f0` - the earlier port was missing this doubling entirely;
-// (2) the coloration BPF's resonance is `3.0f + 3.0f*tone` for this
-// resonance=true config, not the earlier port's guessed `1.0f + 5.0f*
-// tone`; (3) `noisiness` is squared BEFORE both its uses - the earlier
-// port only squared it for the noise-clock rate, but real Plaits also
-// uses the SAME squared value for the metallic/noise crossfade blend,
-// not the raw knob value; (4) `SwingVCA`'s real formula is resolved
-// exactly now: `s *= (s>0 ? 4.0f : 0.1f); s = s/(1+|s|); return
-// (s+0.1f)*gain` - an ASYMMETRIC pre-scale on the raw signal BEFORE
-// saturating, then a `+0.1f` DC offset added AFTER saturating but
-// BEFORE the envelope-gain multiply - qualitatively different from the
-// earlier port's gain-then-saturate approximation, not just re-tuned
-// constants. The BPF's own 6-octave/72-semitone tone sweep and the
-// 16000Hz upper cutoff clamp are both confirmed exact by the real
-// source too.
+// Run the metallic cluster at twice the base frequency. Clocked-noise mixing
+// and clock frequency both use squared noisiness; preserve the model clamps.
 class AnalogHiHat {
 public:
     void init(double sampleRate) {
@@ -96,11 +66,11 @@ public:
     // tone/noisiness/decay: 0..1 (see class comment for the knob
     // mapping this port assigns).
     float process(float f0, float tone, float noisiness, float decay) {
-        // Six square oscillators at Plaits' own documented inharmonic
+        // Six square oscillators at reference documented inharmonic
         // ratios (nominal reference 414Hz), summed to a -1..1 "metallic"
         // signal.
         static constexpr float kRatios[6] = {1.0f, 1.304f, 1.466f, 1.787f, 1.932f, 2.536f};
-        const float metallicF0 = 2.0f * f0; // real Plaits' own Render(2.0f * f0, ...) call - the earlier port was missing this doubling
+        const float metallicF0 = 2.0f * f0; // Run the metallic oscillator cluster at twice the base normalized frequency.
         int litCount = 0;
         for (int i = 0; i < 6; ++i) {
             const float oscFrequency = std::clamp(metallicF0 * kRatios[i], 0.0f, 0.499f);
@@ -112,24 +82,13 @@ public:
         const float metallic = 0.33f * static_cast<float>(litCount) - 1.0f;
 
         const float toneRatio = semitonesToRatio(tone * 72.0f); // 6-octave/72-semitone sweep, confirmed exact
-        const float nyquistCap = 16000.0f / static_cast<float>(sampleRateHz); // real Plaits' own upper clamp, not a generic 0.499 Nyquist cap
+        const float nyquistCap = 16000.0f / static_cast<float>(sampleRateHz); // reference upper clamp, not a generic 0.499 Nyquist cap
         const float bpfFrequency = std::clamp((150.0f * toneRatio) / static_cast<float>(sampleRateHz), 0.0f, nyquistCap);
         toneFilter.setFrequencyAndResonance(bpfFrequency, 3.0f + 3.0f * tone); // resonance=true config's real Q formula
         float out = toneFilter.process(metallic, Svf::Mode::BandPass);
 
-        // Clocked random sampler ("noisiness" crossfade source) - a
-        // held random value, resampled at a rate that itself depends on
-        // noisiness and pitch.
-        // `f0` is ALREADY normalized (cycles/sample) - dividing by
-        // sampleRateHz again here (an earlier version of this file did)
-        // made the clock run ~48000x too slow, so noiseSample almost
-        // never updated within a hit's own lifetime and every noisiness
-        // setting just attenuated the metallic signal toward silence
-        // instead of ever crossfading in real noise - caught from a
-        // real by-ear test, "para a direita nao tenho som" (user
-        // scrolling toward high Harmonics/noisiness and getting total
-        // silence at the very top of the range, since metallic had
-        // faded out and noise never actually arrived).
+        // Hold random values between clock ticks. f0 is already cycles/sample;
+        // do not divide it by sampleRateHz again.
         const float noisinessSquared = noisiness * noisiness;
         const float noiseClockFrequency = std::clamp(f0 * (16.0f + 16.0f * (1.0f - noisinessSquared)), 0.0f, 0.5f);
         noiseClockPhase += noiseClockFrequency;
@@ -139,7 +98,7 @@ public:
         }
         // Crossfade blend also uses the SQUARED noisiness (the same
         // reassigned value the clock-rate formula above uses), not the
-        // raw knob value - real Plaits reassigns its local `noisiness`
+        // raw knob value - reference reassigns its local `noisiness`
         // to its own square once, then reads it twice.
         out += noisinessSquared * (noiseSample - out);
 
@@ -180,4 +139,4 @@ private:
     std::uint32_t rngState = 0x9e3779b9u;
 };
 
-} // namespace ruidocore
+} //

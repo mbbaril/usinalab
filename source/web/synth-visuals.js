@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import {GraphViewport,installEditableGraph} from './graph-viewport.js';
-// Geometry follows AlgoView and EnvelopeView in the JUCE editor.
+// Geometry follows AlgoView and EnvelopeView in the plugin editor.
 const svg=(name,attrs={})=>{const n=document.createElementNS('http://www.w3.org/2000/svg',name);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);return n;};
 export function algorithmState(data,algorithm,feedback,param){
   if(algorithm===40)return {carriers:param('direct_out')&63,links:Array.from({length:36},(_,i)=>param(`mx_${1+Math.floor(i/6)}to${1+i%6}`)/100)};

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The MODAL operator, measured (rule 25; docs/FISICA.md): an object struck, its sound analysed - never the code read.
-//   STRUCTURES  each one's first partials at the table's ratios (within 6 cents)
-//   MATERIAL    the first mode's decay rate against the law T60 = ln 1000 / (pi f eta(f)) (within 10 %); DECAY x2
-//   POSITION    struck in the middle, a string loses its even modes
-//   RING        the object sounds on after its envelope has ended; the voice ends once it is silent
-//   STABLE      an oscillator at the very pitch of a mode, driving it for seconds: bounded, finite
+// Validate resonator partial ratios, material decay, strike-position weighting,
+// post-excitation ringing and bounded resonant drive.
+// Expected T60 = ln(1000)/(pi*f*eta(f)).
 #include "engines/fm/FmEngine.h"
 #include <cmath>
 #include <cstdio>
@@ -49,7 +46,7 @@ std::vector<float> render(const std::map<std::string, int>& vals, double secs, d
     return L;
 }
 
-// the power at f over x[a, a + len) (Goertzel, Hann-windowed)
+// The power at f over x[a, a + len) (Goertzel, Hann-windowed)
 double powerAt(const std::vector<float>& x, size_t a, size_t len, double f)
 {
     const double w = 2.0 * kPi * f / kFs, c = 2.0 * std::cos(w);
@@ -63,7 +60,7 @@ double powerAt(const std::vector<float>& x, size_t a, size_t len, double f)
     return s1 * s1 + s2 * s2 - c * s1 * s2;
 }
 
-// the strongest frequency within +-4 % of f (0.02 % steps)
+// The strongest frequency within +-4 % of f (0.02 % steps)
 double peakNear(const std::vector<float>& x, size_t a, size_t len, double f)
 {
     double best = f, bp = -1.0;
@@ -74,7 +71,7 @@ double peakNear(const std::vector<float>& x, size_t a, size_t len, double f)
     return best;
 }
 double cents(double a, double b) { return 1200.0 * std::log2(a / b); }
-} // namespace
+} // Namespace
 
 int main()
 {
@@ -85,8 +82,8 @@ int main()
     // --- STRUCTURES: the first partials where the physics puts them (ALUMINIUM: long, nearly perfect) ---
     for (const int st : { MS_STRING, MS_TUBE_CLOSED, MS_BAR, MS_TINE, MS_MEMBRANE, MS_PLATE, MS_BELL, MS_BOWL }) {
         auto v = object(st, MM_ALUMINIUM);
-        v["OP1.STIFF"] = -8;                              // (cancels aluminium's own small stiffness: 0.08)
-        v["OP1.POSITION"] = 37;                           // (an irrational-ish point: every mode struck)
+        v["OP1.STIFF"] = -8;                              // Cancels aluminium's own small stiffness: 0.08
+        v["OP1.POSITION"] = 37;                           // An irrational-ish point: every mode struck
         const auto x = render(v, 1.2);
         const double f1 = peakNear(x, 4800, 32768, 220.0);
         double worst = 0.0;
@@ -107,7 +104,7 @@ int main()
     {
         const Material& m = modalMaterial(MM_HARDWOOD);
         const double eta = m.eta * std::pow(220.0 / 1000.0, m.gamma), t60 = std::log(1000.0) / (kPi * 220.0 * eta);
-        const auto rate = [&](int decay) {                // dB a second, from two 100 ms windows 0.4 s apart
+        const auto rate = [&](int decay) {                // DB a second, from two 100 ms windows 0.4 s apart
             auto v = object(MS_STRING, MM_HARDWOOD);
             v["OP1.D"] = decay;
             const auto x = render(v, 1.5);
@@ -146,7 +143,7 @@ int main()
             for (size_t i = (size_t)(a * kFs); i < (size_t)(b * kFs); ++i) s += (double)x[i] * x[i];
             return 10.0 * std::log10(s / ((b - a) * kFs) + 1e-20);
         };
-        // (its hum's T60 is over a minute: from 0.2 s to 1.8 s it loses a few dB at most)
+        // Its hum's T60 is over a minute: from 0.2 s to 1.8 s it loses a few dB at most
         const double drop = rms(0.2, 0.4) - rms(1.8, 2.0);
         check(drop < 6.0 && voices == 1, "BRONZE bell, envelope done at once: 0.2 -> 1.8 s (dB)", drop, "< 6, voice on");
         auto r = object(MS_MEMBRANE, MM_RUBBER);
@@ -161,7 +158,7 @@ int main()
     {
         auto v = object(MS_STRING, MM_ALUMINIUM);
         v["OP1.B"] = 100;
-        v["OP1.D"] = 100;                                 // (the longest decay: the highest Q)
+        v["OP1.D"] = 100;                                 // The longest decay: the highest Q
         const auto x = render(v, 4.0);
         bool finite = true;
         float peak = 0.0f;
@@ -185,7 +182,7 @@ int main()
         check(a > -50.0 && std::fabs(a - b) < 3.0, "BOW: held, it sustains (dB change 1.0 -> 1.8 s)", a - b, "|x| < 3, heard");
         const double f = peakNear(x, (size_t)(1.0 * kFs), 32768, 220.0);
         check(std::fabs(cents(f, 220.0)) < 15.0, "BOW: it speaks at its first mode (cents)", cents(f, 220.0), "|x| < 15");
-        // let go, the bow lifts: the object rings out and its voice ends (28/10: it used to sing on by itself)
+        // After note-off, bowed excitation ends and the resonator tail releases its voice.
         auto g = object(MS_BOWL, MM_GLASS);
         g["OP1.STRIKE"] = 0;
         g["OP1.EXCITER"] = MX_BOW;
@@ -238,7 +235,7 @@ int main()
         check(d > 6.0, "RATTLE 100: the highs of a strike (dB more)", d, "> 6");
     }
     {
-        // DAMP (28/10): held, nothing changes (bit for bit); let go at 0.3 s, a hand stops the ring
+        // DAMP preserves held output; after release at 0.3 s it attenuates the ringing tail.
         auto v = object(MS_BAR, MM_STEEL);
         const auto held0 = render(v, 0.6);
         v["OP1.DAMP"] = 100;
@@ -256,12 +253,12 @@ int main()
         check(light > 3.0 && light < 25.0, "DAMP 30: a light touch (dB under the ring)", light, "3 .. 25");
     }
     {
-        // DROP (28/10): it falls and bounces - impacts ever sooner (the gaps shrink by the restitution) and softer
+        // DROP impacts become closer and quieter according to restitution.
         auto v = object(MS_BAR, MM_HARDWOOD);
         v["OP1.EXCITER"] = MX_DROP;
-        v["OP1.D"] = 15;                                 // (a short ring: each impact heard on its own)
+        v["OP1.D"] = 15;                                 // A short ring: each impact heard on its own
         const auto x = render(v, 1.5);
-        std::vector<double> onsets;                      // (1 ms windows of the signal's slope: a jump of 12 dB)
+        std::vector<double> onsets;                      // 1 ms windows of the signal's slope: a jump of 12 dB
         const int w = (int)(0.001 * kFs);
         double prev = 1e-20;
         for (int i = w; i + w < (int)x.size(); i += w) {
@@ -279,7 +276,7 @@ int main()
         check(shrinking, "DROP: 4+ impacts, the gaps shrinking (impacts)", (double)onsets.size(), ">= 4, shrinking");
     }
     {
-        // the bank at 2 x the host's when oversampled (8 x: a step every 4 samples): the same object as at 1 x - its
+        // The bank at 2 x the host's when oversampled (8 x: a step every 4 samples): the same object as at 1 x - its
         // modes' levels at 220 Hz, 4.4 kHz, 11 kHz within 0.5 dB (the averaging's and the hold's droop corrected)
         const auto at = [&](int os, double f) {
             auto e = std::make_unique<Engine>();
@@ -293,7 +290,7 @@ int main()
             const int n = (int)(0.6 * fs);
             std::vector<float> L((size_t)n), R((size_t)n);
             e->render(L.data(), R.data(), n);
-            const double w = 2.0 * kPi * f / fs, c = 2.0 * std::cos(w);   // (Goertzel at the engine's own rate)
+            const double w = 2.0 * kPi * f / fs, c = 2.0 * std::cos(w);   // Goertzel at the engine's own rate
             double s1 = 0.0, s2 = 0.0;
             const size_t a = (size_t)(0.2 * fs), len = (size_t)(0.3 * fs);
             for (size_t i = 0; i < len; ++i) {
@@ -304,7 +301,7 @@ int main()
             }
             return 10.0 * std::log10((s1 * s1 + s2 * s2 - c * s1 * s2) / ((double)len * len) + 1e-30);
         };
-        // against 2 x (the bank at 96 kHz too, a step every sample): only the averaging and the hold differ
+        // Against 2 x (the bank at 96 kHz too, a step every sample): only the averaging and the hold differ
         double worst = 0.0;
         for (const double f : { 220.0, 4400.0, 11000.0 }) {
             const double d2 = at(8, f) - at(2, f), d1 = at(8, f) - at(1, f);

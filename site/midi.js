@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 import { MidiParser } from './midi-parser.js';
 export class MidiConnection {
   constructor(onMessage, onStatus, onDisconnect) {
@@ -9,7 +9,7 @@ export class MidiConnection {
   parser(id) { if (!this.parsers.has(id)) this.parsers.set(id, new MidiParser(this.onMessage)); return this.parsers.get(id); }
   async connect() {
     if (window.Capacitor?.isNativePlatform()) {
-      // Capacitor's core bundle is supplied by the mobile build, never required for a browser-only visit.
+      // The native bridge bundle is supplied by the mobile build, never required for a browser-only visit.
       const { registerPlugin } = await import('./capacitor-core.js');
       this.native = registerPlugin('UsinaMidi');
       if (!this.connected) {

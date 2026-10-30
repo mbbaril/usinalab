@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina - the howl guard (docs/SEGURANCA.md, item 4): the howl detector listening to the path from outside the synth
-// (the audio input and the feedback loop's return), and up to four narrow notches on that same path, one at each
-// howl it finds - the classic adaptive-notch answer to acoustic feedback. A notch comes in over ~30 ms (-30 dB,
-// Q 15: a sixth of a tone wide), stays while its howl is heard and 10 s after, then goes out over 0.5 s. The detector
-// listens after the notches: a howl dealt with is gone from it, a new one at another pitch takes the next notch.
-// The synth's own voices never pass here (a held note is not a howl). Plain C++, no allocation after prepare().
+// Adaptive feedback suppression on external input and loop returns.
+// Up to four notches: -30 dB, Q=15, approximately 30 ms attack.
+// Hold for 10 s after detection, then release over 0.5 s.
+// Detect after the notches; synthesizer voices bypass this path.
+// No allocation after prepare().
 #pragma once
 #include "HowlDetector.h"
 #include <array>
@@ -33,10 +32,10 @@ public:
         active.store(0, std::memory_order_relaxed);
     }
 
-    // one sample of the outside path, both channels, in place
+    // One sample of the outside path, both channels, in place
     void process(float& l, float& r)
     {
-        if (++sub >= kSub) {                            // the notches' gains move, their coefficients follow
+        if (++sub >= kSub) {                            // The notches' gains move, their coefficients follow
             sub = 0;
             int on = 0;
             for (auto& n : notch) {
@@ -53,27 +52,27 @@ public:
         if (det.push(0.5f * (l + r)) && det.howling()) take(det.frequency());
     }
 
-    // for the interface (any thread): the last howl found while a notch is on (Hz), else 0; how many notches are on
+    // For the interface (any thread): the last howl found while a notch is on (Hz), else 0; how many notches are on
     float notchedHz() const { return active.load(std::memory_order_relaxed) > 0 ? found.load(std::memory_order_relaxed) : 0.0f; }
     int activeNotches() const { return active.load(std::memory_order_relaxed); }
 
 private:
-    static constexpr int kSub = 32;                     // (samples between the notches' coefficient updates)
+    static constexpr int kSub = 32;                     // Samples between the notches' coefficient updates
     struct Notch {
-        double hz = 0.0, depthDb = 0.0;                  // where; how deep now (0 .. -30 dB)
-        double hold = 0.0;                               // seconds left at full depth
+        double hz = 0.0, depthDb = 0.0;                  // Where; how deep now (0 .. -30 dB)
+        double hold = 0.0;                               // Seconds left at full depth
         double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1[2] {}, z2[2] {};
         void update(double fs, int n)
         {
             const double dt = n / fs;
             if (hold > 0.0) {
                 hold -= dt;
-                depthDb = std::max(-30.0, depthDb - 30.0 * dt / 0.03);   // in over ~30 ms
+                depthDb = std::max(-30.0, depthDb - 30.0 * dt / 0.03);   // In over ~30 ms
             } else if (depthDb < 0.0) {
-                depthDb = std::min(0.0, depthDb + 30.0 * dt / 0.5);      // out over 0.5 s
+                depthDb = std::min(0.0, depthDb + 30.0 * dt / 0.5);      // Out over 0.5 s
             }
             if (depthDb >= -0.01) { z1[0] = z1[1] = z2[0] = z2[1] = 0.0; return; }
-            // a peaking EQ at hz, Q 15, depthDb (RBJ): at full depth a notch
+            // A peaking EQ at hz, Q 15, depthDb (RBJ): at full depth a notch
             constexpr double kPi = 3.14159265358979323846, q = 15.0;
             const double A = std::pow(10.0, depthDb / 40.0), w = 2.0 * kPi * hz / fs, al = std::sin(w) / (2.0 * q);
             const double a0 = 1.0 + al / A;
@@ -92,7 +91,7 @@ private:
         }
     };
 
-    // a howl at hz: the notch already on it (within 3 %) is held longer; else a free one, or the one closest to its end
+    // Refresh an existing notch within 3% of hz; otherwise reuse a free or expiring notch.
     void take(double hz)
     {
         Notch* best = nullptr;
@@ -105,7 +104,7 @@ private:
                     best = &n;
         if (best->depthDb >= -0.01 || std::fabs(best->hz - hz) >= 0.03 * hz) {
             best->hz = hz;
-            best->depthDb = std::min(best->depthDb, -0.02);   // (on from now; its states from rest)
+            best->depthDb = std::min(best->depthDb, -0.02);   // On from now; its states from rest
             best->z1[0] = best->z1[1] = best->z2[0] = best->z2[1] = 0.0;
         }
         best->hold = 10.0;
@@ -120,4 +119,4 @@ private:
     std::atomic<int> active { 0 };
 };
 
-} // namespace usina
+} // Namespace usina

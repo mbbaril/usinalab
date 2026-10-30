@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - the MACRO operator mode (22/10; the user: "que tal já adicionar o plaits aos engines, como
-// macro"): an operator becomes the macro-oscillator module's 24 models, ported whole and bit for bit
-// (src/engines/macro/plaits, tools/port/port_plaits.py, check_plaits.sh). This is the operator's side - what the
-// module's voice (plaits/dsp/voice.cc) does around a model, without the module's own LPG and envelope (the operator's
-// envelope and the voice's LPG stage are Usina's):
+// Usina MACRO operator: 24 macro-oscillator models adapted to the operator
+// envelope and voice LPG. Source attribution: THIRD_PARTY.md.
 //   A  MODEL (the module's order)      B  HARMONICS      C  TIMBRE (0..200: 0..1)      D  MORPH
 //   the note: the operator's pitch; the accent: the velocity; the trigger: the note (a strike at its start, held
 //   while the key is) - the drums, the plucked and struck models need it, the others ignore it
@@ -14,39 +11,39 @@
 // 48 kHz it would sound 4.6 cents sharp) - and are brought to the host's rate by the converter (src/dsp/Resampler.h,
 // out and aux as its two channels), then up to the voice's rate by the engine's half-band stages. The latency this
 // adds (about 0.7 ms) is the operator's own: a MACRO operator sounds that much after the voice's FM operators.
-// The six-operator models play patch banks: the module's own (its author's favourite DX7 patches - not the author's
-// to license) only in a personal build (CMake USINA_PERSONAL_FM_BANKS); else a bank of the instrument's INIT VOICE
-// (built here from the format: a sine), until the user's own SysEx banks come (docs/BACKLOG.md).
-// No allocation after prepare(). Each operator its own set of models (about 27 KB: their 16 KB of shared memory as the
-// module's).
+// Six-operator models use three banks of 32 patches. Public builds use an
+// INIT VOICE bank generated from the format; restricted upstream banks are
+// enabled only by USINA_PERSONAL_FM_BANKS.
+// No allocation after prepare(); about 27 KB per operator, including 16 KB
+// shared by its models.
 #pragma once
 #include "FmMacroModels.h"
 #include "FmVoiceFilter.h"
 #include "dsp/Resampler.h"
-#include "engines/macro/plaits/dsp/engine/additive_engine.h"
-#include "engines/macro/plaits/dsp/engine/bass_drum_engine.h"
-#include "engines/macro/plaits/dsp/engine/chord_engine.h"
-#include "engines/macro/plaits/dsp/engine/fm_engine.h"
-#include "engines/macro/plaits/dsp/engine/grain_engine.h"
-#include "engines/macro/plaits/dsp/engine/hi_hat_engine.h"
-#include "engines/macro/plaits/dsp/engine/modal_engine.h"
-#include "engines/macro/plaits/dsp/engine/noise_engine.h"
-#include "engines/macro/plaits/dsp/engine/particle_engine.h"
-#include "engines/macro/plaits/dsp/engine/snare_drum_engine.h"
-#include "engines/macro/plaits/dsp/engine/speech_engine.h"
-#include "engines/macro/plaits/dsp/engine/string_engine.h"
-#include "engines/macro/plaits/dsp/engine/swarm_engine.h"
-#include "engines/macro/plaits/dsp/engine/virtual_analog_engine.h"
-#include "engines/macro/plaits/dsp/engine/waveshaping_engine.h"
-#include "engines/macro/plaits/dsp/engine/wavetable_engine.h"
-#include "engines/macro/plaits/dsp/engine2/chiptune_engine.h"
-#include "engines/macro/plaits/dsp/engine2/phase_distortion_engine.h"
-#include "engines/macro/plaits/dsp/engine2/six_op_engine.h"
-#include "engines/macro/plaits/dsp/engine2/string_machine_engine.h"
-#include "engines/macro/plaits/dsp/engine2/virtual_analog_vcf_engine.h"
-#include "engines/macro/plaits/dsp/engine2/wave_terrain_engine.h"
-#include "port/stmlib/dsp/limiter.h"
-#include "port/stmlib/utils/buffer_allocator.h"
+#include "engines/macro/models/dsp/engine/additive_engine.h"
+#include "engines/macro/models/dsp/engine/bass_drum_engine.h"
+#include "engines/macro/models/dsp/engine/chord_engine.h"
+#include "engines/macro/models/dsp/engine/fm_engine.h"
+#include "engines/macro/models/dsp/engine/grain_engine.h"
+#include "engines/macro/models/dsp/engine/hi_hat_engine.h"
+#include "engines/macro/models/dsp/engine/modal_engine.h"
+#include "engines/macro/models/dsp/engine/noise_engine.h"
+#include "engines/macro/models/dsp/engine/particle_engine.h"
+#include "engines/macro/models/dsp/engine/snare_drum_engine.h"
+#include "engines/macro/models/dsp/engine/speech_engine.h"
+#include "engines/macro/models/dsp/engine/string_engine.h"
+#include "engines/macro/models/dsp/engine/swarm_engine.h"
+#include "engines/macro/models/dsp/engine/virtual_analog_engine.h"
+#include "engines/macro/models/dsp/engine/waveshaping_engine.h"
+#include "engines/macro/models/dsp/engine/wavetable_engine.h"
+#include "engines/macro/models/dsp/engine2/chiptune_engine.h"
+#include "engines/macro/models/dsp/engine2/phase_distortion_engine.h"
+#include "engines/macro/models/dsp/engine2/six_op_engine.h"
+#include "engines/macro/models/dsp/engine2/string_machine_engine.h"
+#include "engines/macro/models/dsp/engine2/virtual_analog_vcf_engine.h"
+#include "engines/macro/models/dsp/engine2/wave_terrain_engine.h"
+#include "port/dsputil/dsp/limiter.h"
+#include "port/dsputil/utils/buffer_allocator.h"
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -58,8 +55,8 @@ const uint8_t* macroFmBank(int bank);                    // (FmMacro.cpp: the pe
 
 class Macro {
 public:
-    static constexpr double kModuleRate = 47872.34;      // (plaits/dsp/dsp.h kCorrectedSampleRate)
-    static constexpr int kBlock = 12;                    // (plaits/dsp/dsp.h kBlockSize)
+    static constexpr double kModuleRate = 47872.34;      // (models/dsp/dsp.h kCorrectedSampleRate)
+    static constexpr int kBlock = 12;                    // (models/dsp/dsp.h kBlockSize)
 
     // hostRate: the plugin's; oversample: the voice's rate / the host's (1, 2, 4, 8, 16)
     void prepare(double hostRate, int oversample)
@@ -70,10 +67,10 @@ public:
         engines = { &vaVcf, &phaseDistortion, &sixOp, &sixOp, &sixOp, &waveTerrain, &stringMachine, &chiptune,
                     &virtualAnalog, &waveshaping, &fm, &grain, &additive, &wavetable, &chord, &speech, &swarm,
                     &noise, &particle, &string, &modal, &bassDrum, &snareDrum, &hiHat };
-        // each model's output stage, as the module's voice registers them (plaits/dsp/voice.cc Init: already
+        // each model's output stage, as the module's voice registers them (upstream's dsp/voice.cc Init: already
         // enveloped, out gain, aux gain; a negative gain: through a limiter) - without it the gains stay at the zeroed
-        // memory's 0 (measured 22/10: every model silent)
-        static const usina_plaits::PostProcessingSettings kPost[kMacroModels] = {
+        // memory's 0 without this, zero-initialized gains silence the models
+        static const usina_models::PostProcessingSettings kPost[kMacroModels] = {
             { 1.0f, 1.0f, false }, { 0.7f, 0.7f, false }, { 1.0f, 1.0f, true }, { 1.0f, 1.0f, true },
             { 1.0f, 1.0f, true }, { 0.7f, 0.7f, false }, { 0.8f, 0.8f, false }, { 0.5f, 0.5f, false },
             { 0.8f, 0.8f, false }, { 0.7f, 0.6f, false }, { 0.6f, 0.6f, false }, { 0.7f, 0.6f, false },
@@ -146,19 +143,19 @@ private:
         const float fm = fmCount > 0 ? (float)(fmSum / fmCount) : 0.0f;
         fmSum = 0.0;
         fmCount = 0;
-        usina_plaits::EngineParameters p;
+        usina_models::EngineParameters p;
         p.note = note + 12.0f * fm;
         p.harmonics = harmonics;
         p.timbre = timbre;
         p.morph = morph;
         p.accent = accent;
-        p.trigger = rising ? (usina_plaits::TRIGGER_RISING_EDGE | usina_plaits::TRIGGER_HIGH)
-                           : (gate ? usina_plaits::TRIGGER_HIGH : usina_plaits::TRIGGER_LOW);
+        p.trigger = rising ? (usina_models::TRIGGER_RISING_EDGE | usina_models::TRIGGER_HIGH)
+                           : (gate ? usina_models::TRIGGER_HIGH : usina_models::TRIGGER_LOW);
         rising = false;
         bool enveloped = false;
         float out[kBlock], aux[kBlock];
         e->Render(p, out, aux, kBlock, &enveloped);
-        // the module's output stage: its gain per model, a limiter where the gain is negative (plaits/dsp/voice.h
+        // the module's output stage: its gain per model, a limiter where the gain is negative (upstream's dsp/voice.h
         // ChannelPostProcessor; its 16 bits and its LPG left out)
         const float g = post[(size_t)m].out_gain, ga = post[(size_t)m].aux_gain;   // (by model: the six-op ones share
                                                                                     // one engine)
@@ -171,33 +168,33 @@ private:
         conv.push(out, aux, kBlock);
     }
 
-    usina_plaits::VirtualAnalogVCFEngine vaVcf;
-    usina_plaits::PhaseDistortionEngine phaseDistortion;
-    usina_plaits::SixOpEngine sixOp;
-    usina_plaits::WaveTerrainEngine waveTerrain;
-    usina_plaits::StringMachineEngine stringMachine;
-    usina_plaits::ChiptuneEngine chiptune;
-    usina_plaits::VirtualAnalogEngine virtualAnalog;
-    usina_plaits::WaveshapingEngine waveshaping;
-    usina_plaits::FMEngine fm;
-    usina_plaits::GrainEngine grain;
-    usina_plaits::AdditiveEngine additive;
-    usina_plaits::WavetableEngine wavetable;
-    usina_plaits::ChordEngine chord;
-    usina_plaits::SpeechEngine speech;
-    usina_plaits::SwarmEngine swarm;
-    usina_plaits::NoiseEngine noise;
-    usina_plaits::ParticleEngine particle;
-    usina_plaits::StringEngine string;
-    usina_plaits::ModalEngine modal;
-    usina_plaits::BassDrumEngine bassDrum;
-    usina_plaits::SnareDrumEngine snareDrum;
-    usina_plaits::HiHatEngine hiHat;
-    std::array<usina_plaits::Engine*, kMacroModels> engines {};
-    std::array<usina_plaits::PostProcessingSettings, kMacroModels> post {};
+    usina_models::VirtualAnalogVCFEngine vaVcf;
+    usina_models::PhaseDistortionEngine phaseDistortion;
+    usina_models::SixOpEngine sixOp;
+    usina_models::WaveTerrainEngine waveTerrain;
+    usina_models::StringMachineEngine stringMachine;
+    usina_models::ChiptuneEngine chiptune;
+    usina_models::VirtualAnalogEngine virtualAnalog;
+    usina_models::WaveshapingEngine waveshaping;
+    usina_models::FMEngine fm;
+    usina_models::GrainEngine grain;
+    usina_models::AdditiveEngine additive;
+    usina_models::WavetableEngine wavetable;
+    usina_models::ChordEngine chord;
+    usina_models::SpeechEngine speech;
+    usina_models::SwarmEngine swarm;
+    usina_models::NoiseEngine noise;
+    usina_models::ParticleEngine particle;
+    usina_models::StringEngine string;
+    usina_models::ModalEngine modal;
+    usina_models::BassDrumEngine bassDrum;
+    usina_models::SnareDrumEngine snareDrum;
+    usina_models::HiHatEngine hiHat;
+    std::array<usina_models::Engine*, kMacroModels> engines {};
+    std::array<usina_models::PostProcessingSettings, kMacroModels> post {};
     alignas(16) char shared[16384] {};
-    usina_stmlib::BufferAllocator allocator;
-    usina_stmlib::Limiter limiter;
+    usina_dsputil::BufferAllocator allocator;
+    usina_dsputil::Limiter limiter;
     usina::Resampler conv;
     std::array<HalfBand, 4> ups {};
     std::array<float, 16> buf {};

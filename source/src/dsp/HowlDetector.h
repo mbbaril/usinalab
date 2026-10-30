@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina - the howl detector (docs/SEGURANCA.md, item 4): a feedback howl, acoustic (a microphone hearing the speaker)
-// or a loop's, is a narrow spectral peak that persists and grows, with no harmonics of its own. The criteria are the
-// classic ones of the acoustic-feedback-control literature (van Waterschoot and Moonen, "Fifty years of acoustic
-// feedback control", Proc. IEEE 2011): PAPR (the peak against the band's median), PNPR (against its neighbours), PHPR
-// (against its harmonics and its half: a voice or an instrument has them, a howl does not), IPMP (the same peak frame
-// after frame), and a level that grows or is already loud.
-// It listens only to what comes from outside the synth (the input and the loop's return): a held synth note is never
-// taken for a howl. Frames of 2048 samples (Hann), every 1024; one call per sample, the FFT in place on its frame.
-// Plain C++, no allocation after prepare(). The processor acts on what it finds (a notch on that path, a warning).
+// Persistent narrowband feedback detector for external input and loop returns.
+// Uses PAPR, PNPR, PHPR, IPMP and level-growth criteria; see van Waterschoot
+// and Moonen, "Fifty years of acoustic feedback control", Proc. IEEE 2011.
+// Analyze 2048-sample Hann frames with 1024-sample hops.
+// Exclude synthesizer voices from this path. No allocation after prepare().
 #pragma once
 #include <algorithm>
 #include <array>
@@ -19,13 +15,13 @@ namespace usina {
 
 class HowlDetector {
 public:
-    static constexpr int kN = 2048, kHop = 1024, kHistory = 16;   // (16 hops: ~340 ms at 48 kHz)
+    static constexpr int kN = 2048, kHop = 1024, kHistory = 16;   // 16 hops: ~340 ms at 48 kHz
 
     void prepare(double sampleRate)
     {
         constexpr double kPi = 3.14159265358979323846;
         fs = sampleRate > 0.0 ? sampleRate : 48000.0;
-        // (at higher rates the frame is decimated by the rate's ratio, so a bin is ~23 Hz at any rate)
+        // At higher rates the frame is decimated by the rate's ratio, so a bin is ~23 Hz at any rate
         step = std::max(1, (int)std::lround(fs / 48000.0));
         buf.assign(kN, 0.0f);
         spec.assign(kN, {});
@@ -48,10 +44,10 @@ public:
         foundHz = 0.0;
     }
 
-    // one sample of the outside path; true when a frame was analysed (then howling() and frequency() are new)
+    // One sample of the outside path; true when a frame was analysed (then howling() and frequency() are new)
     bool push(float x)
     {
-        decAcc += x;                                     // (a plain average over 'step' samples: enough for < 10 kHz)
+        decAcc += x;                                     // A plain average over 'step' samples: enough for < 10 kHz
         if (++dec < step) return false;
         buf[(size_t)pos] = (float)(decAcc / step);
         decAcc = 0.0;
@@ -64,12 +60,12 @@ public:
     }
 
     bool howling() const { return found; }
-    double frequency() const { return foundHz; }         // (Hz, while howling)
+    double frequency() const { return foundHz; }         // Hz, while howling
 
 private:
     void analyse()
     {
-        // the frame, oldest first, windowed; its FFT (radix 2, in place)
+        // The frame, oldest first, windowed; its FFT (radix 2, in place)
         for (int i = 0; i < kN; ++i) spec[(size_t)i] = { (double)buf[(size_t)((pos + i) % kN)] * win[(size_t)i], 0.0 };
         fft();
         const double binHz = fs / step / kN;
@@ -80,28 +76,27 @@ private:
             p[(size_t)i] = std::norm(spec[(size_t)i]) + 1e-20;
             if (p[(size_t)i] > p[(size_t)k]) k = i;
         }
-        // the band's MEDIAN power (not its mean: the mean holds the peak itself, and a pure sine's peak-to-mean over
-        // ~430 bins is only ~22 dB; the median is the floor: tiny under a howl, close to the peak in noise)
+        // Use median band power as the noise floor; the mean is biased by the candidate peak.
         std::copy(p.begin() + lo, p.begin() + hi + 1, sorted.begin());
         const int half = (hi - lo + 1) / 2;
         std::nth_element(sorted.begin(), sorted.begin() + half, sorted.begin() + (hi - lo + 1));
         const double mean = sorted[(size_t)half];
         const auto db = [](double v) { return 10.0 * std::log10(v); };
-        // a Hann window spreads a sine over 3 bins: the peak is their sum; its neighbours, 4..8 bins away
+        // A Hann window spreads a sine over 3 bins: the peak is their sum; its neighbours, 4..8 bins away
         const double peak = p[(size_t)k] + p[(size_t)(k - 1)] + p[(size_t)(k + 1)];
         double nb = 0.0;
         for (int d = 4; d <= 8; ++d) nb = std::max({ nb, k - d >= lo ? p[(size_t)(k - d)] : 0.0, k + d <= hi ? p[(size_t)(k + d)] : 0.0 });
-        double harm = 0.0;                               // (the 2nd, 3rd and the half, each its 3 bins' sum)
+        double harm = 0.0;                               // The 2nd, 3rd and the half, each its 3 bins' sum
         for (const double r : { 2.0, 3.0, 0.5 }) {
             const int h = (int)std::lround(k * r);
             if (h - 1 >= lo && h + 1 <= hi) harm = std::max(harm, p[(size_t)(h - 1)] + p[(size_t)h] + p[(size_t)(h + 1)]);
         }
         const double papr = db(peak / 3.0) - db(mean), pnpr = db(peak / 3.0) - db(nb + 1e-20);
         const double phpr = harm > 0.0 ? db(peak) - db(harm) : 60.0;
-        // the peak's level in dBFS: a full-scale sine sums to (kN/4)^2 x 1.5 over its 3 bins (Hann)
+        // The peak's level in dBFS: a full-scale sine sums to (kN/4)^2 x 1.5 over its 3 bins (Hann)
         const double level = db(peak / (1.5 * (kN / 4.0) * (kN / 4.0)));
         const bool candidate = papr > 30.0 && pnpr > 15.0 && phpr > 20.0 && level > -50.0;
-        // the history: the candidate's bin (or -1) and level, frame by frame
+        // The history: the candidate's bin (or -1) and level, frame by frame
         for (int i = kHistory - 1; i > 0; --i) { peakBins[(size_t)i] = peakBins[(size_t)i - 1]; peakDb[(size_t)i] = peakDb[(size_t)i - 1]; }
         peakBins[0] = candidate ? k : -1;
         peakDb[0] = candidate ? level : -200.0;
@@ -117,7 +112,7 @@ private:
 
     void fft()
     {
-        for (int i = 1, j = 0; i < kN; ++i) {           // (bit reversal)
+        for (int i = 1, j = 0; i < kN; ++i) {           // Bit reversal
             int bit = kN >> 1;
             for (; j & bit; bit >>= 1) j ^= bit;
             j ^= bit;
@@ -139,11 +134,11 @@ private:
     double decAcc = 0.0;
     std::vector<float> buf, win;
     std::vector<std::complex<double>> spec, tw;
-    std::array<double, kN / 2> sorted {};               // (the band's powers, for the median)
+    std::array<double, kN / 2> sorted {};               // The band's powers, for the median
     std::array<int, kHistory> peakBins {};
     std::array<double, kHistory> peakDb {};
     bool found = false;
     double foundHz = 0.0;
 };
 
-} // namespace usina
+} // Namespace usina

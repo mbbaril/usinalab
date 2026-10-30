@@ -22,4 +22,4 @@ std::vector<bool> turingRegisterMask(std::mt19937& rng, int length, float repeti
     return active;
 }
 
-} // namespace ruidocore
+} //

@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -29,7 +27,7 @@
 // ---------------------------------------------------------------------------
 #pragma once
 
-#include "PlaitsResonatorTables.h"
+#include "ResonatorTables.h"
 #include "Svf.h"
 
 #include <algorithm>
@@ -38,18 +36,11 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `Resonator`
-// (plaits/dsp/physical_modelling/resonator.h/.cc, MIT licensed,
-// github.com/pichenettes/eurorack, downloaded and read directly - "nao
-// simplifique nada"/"quero fidelidade total", 2026-08-27). The file's
-// own header comment says it plainly: "Resonator, taken from Rings'
-// code but with fixed position" - the SAME class real Plaits' Modal
-// Resonator engine and Mutable's own Rings module both use, so this
-// port is directly reusable when Rings gets ported later too (flagged
-// by the user in this same session).
+// Resonator DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
 // 24 resonant band-pass modes (`kMaxNumModes`), each an independent
-// `ruidocore::Svf` instance - real Plaits batches them 4-at-a-time
+// `Svf` instance - reference batches them 4-at-a-time
 // (`ResonatorSvf<4>`) purely as a register-allocation trick for its own
 // embedded target; this port uses 24 separate Svf instances instead,
 // which is mathematically IDENTICAL (same ZDF/TPT coefficients, g=tan
@@ -57,20 +48,8 @@ namespace ruidocore {
 // ResonatorSvf::Process code directly), just not SIMD-batched - a pure
 // implementation-detail difference, not an algorithm simplification.
 //
-// Mode frequencies use real Plaits' own "stretch factor" accumulation
-// (NthHarmonicCompensation + the per-mode stretch_factor/stiffness
-// recurrence in Process()) driven by the real 65-entry `lut_stiffness`
-// table (Dsp/PlaitsResonatorTables.h, copied verbatim from
-// plaits/resources.cc). Mode amplitudes use the real fixed excitation
-// "position" (0.015, matching Plaits' own ModalVoice::Init call) fed
-// through a cosine taper across mode index - this port computes that
-// taper directly via std::cos rather than replicating stmlib's own IIR
-// coupled-form CosineOscillator generator (confirmed, by reading its
-// source, to produce the exact sequence `0.5*cos(2*pi*i*position)+0.5`
-// for the i-th call to Next() - a pure CPU-optimization technique for
-// stmlib's embedded target, mathematically identical to calling
-// std::cos directly, same substitution this library already makes for
-// its own sine/tan calls elsewhere).
+// Mode frequencies use accumulated stiffness stretch and harmonic compensation.
+// Excitation position is 0.015; mode taper is 0.5*cos(2*pi*i*position)+0.5.
 class Resonator {
 public:
     static constexpr int kMaxNumModes = 24;
@@ -86,7 +65,7 @@ public:
 
     // structure: inharmonicity/material (0..1). brightness: excitation
     // brightness parameter, ALSO reused here to shape mode Q loss (real
-    // Plaits' own dual-use of this parameter, not a mistake - see the
+    // reference dual-use of this parameter, not a mistake - see the
     // `brightness *= ...` lines below). damping: energy-absorption/decay
     // parameter (0..1).
     void process(float f0, float structure, float brightness, float damping, const float* in, float* out,
@@ -137,10 +116,10 @@ private:
         return a + (b - a) * indexFractional;
     }
 
-    // Real Plaits' own NthHarmonicCompensation(n, stiffness): runs the
+    // reference NthHarmonicCompensation(n, stiffness): runs the
     // SAME stretch_factor recurrence used in Process() for n-1
     // iterations, then returns 1/stretch_factor - used once, up front,
-    // to pre-scale f0 so the 3rd harmonic (n=3, matching Plaits' own
+    // to pre-scale f0 so the 3rd harmonic (n=3, matching reference
     // fixed call `NthHarmonicCompensation(3, stiffness)`) lands
     // consistently in tune regardless of the stiffness setting.
     static float nthHarmonicCompensation(int n, float stiffness) {
@@ -157,4 +136,4 @@ private:
     std::array<Svf, kMaxNumModes> modeFilters;
 };
 
-} // namespace ruidocore
+} //

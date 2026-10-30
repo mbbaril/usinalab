@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -40,17 +38,10 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `SwarmEngine`
-// (plaits/dsp/engine/swarm_engine.h/.cc, "Swarm of sawtooths and
-// sines", MIT licensed, github.com/pichenettes/eurorack, downloaded and
-// read directly) - 8 ranked `SwarmVoice`s (see Dsp/SwarmVoice.h), each
-// a paired saw+sine oscillator whose pitch spreads away from the
-// fundamental as a function of its own rank and the Harmonics knob,
-// gated by a stochastic "grain" envelope that either free-runs (a
-// shimmering cloud/glissando texture) or bursts in lockstep with the
-// trigger.
+// SwarmEngine DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
-// Trigger-vs-CV semantics: real Plaits' `burst_mode = !(trigger &
+// Trigger-vs-CV semantics: reference `burst_mode = !(trigger &
 // TRIGGER_UNPATCHED)` is true only when a cable IS physically patched
 // into the trigger input - this library has no unpatched/CV-free-
 // running concept at all (every voice is always internally triggered
@@ -59,7 +50,7 @@ namespace ruidocore {
 // AnalogHiHat/FilteredNoiseEngine's own identical reasoning for their
 // own patched-vs-unpatched branches).
 //
-// Grain-rate/block-size coupling: real Plaits' own `density` formula
+// Grain-rate/block-size coupling: reference `density` formula
 // scales directly with `control_rate` (the render() call's OWN block
 // size, in samples) - GrainEnvelope::Step() is called once per
 // render() call, not once per sample, so how large a block this port
@@ -67,17 +58,17 @@ namespace ruidocore {
 // just an implementation detail. Uses the same kControlBlockSize=24
 // this whole family's other block-rate engines already standardize on
 // (WavetableEngine/FilteredNoiseEngine/ParticleNoiseEngine), matching
-// real Plaits' own control-block cadence.
+// reference control-block cadence.
 //
-// Parameter mapping - matches the official Plaits manual's own
+// Parameter mapping - matches the official reference manual's own
 // description ("Harmonics: spread; Timbre: grain density; Morph:
 // grain/glissando size"):
-//   harmonics -> spread (how far each voice's own pitch wanders from f0)
-//   timbre    -> grain density (how often new grains/glissandi start)
-//   morph     -> grain size (below noon: short grain "cloud"; above
-//                noon: continuous glissando between random pitches)
-//   decay     -> LPG gain/brightness decay time
-//   accent    -> output level only
+// harmonics -> spread (how far each voice's own pitch wanders from f0)
+// timbre -> grain density (how often new grains/glissandi start)
+// morph -> grain size (below noon: short grain "cloud"; above
+// noon: continuous glissando between random pitches)
+// decay -> LPG gain/brightness decay time
+// accent -> output level only
 class SwarmEngine : public Engine {
 public:
     SwarmEngine() {
@@ -142,10 +133,7 @@ public:
             const float sampleTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleHarmonics = std::clamp(parameters.harmonics + parameters.harmonicsEnvAmount * envValue, 0.0f, 1.0f);
-            // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-            // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-            // positive amount, easily masked by this engine's own natural decay;
-            // negative already reaches full silence at max amount so stays as-is).
+            // Envelope depth is bipolar; positive depth uses the extended gain range.
             const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                             ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                             : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
@@ -198,4 +186,4 @@ private:
     bool gateOpen = false;
 };
 
-} // namespace ruidocore
+} //

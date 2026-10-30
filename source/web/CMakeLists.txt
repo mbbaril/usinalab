@@ -9,11 +9,11 @@ add_subdirectory("${ROOT}/libs/RuidoCore" ruidocore)
 file(GLOB FM CONFIGURE_DEPENDS "${ROOT}/src/engines/fm/*.cpp")
 file(GLOB FX CONFIGURE_DEPENDS "${ROOT}/src/fx/*.cpp")
 file(GLOB_RECURSE PORT CONFIGURE_DEPENDS
-    "${ROOT}/src/engines/macro/plaits/*.cc" "${ROOT}/src/fx/clouds/*.cc"
-    "${ROOT}/src/fx/texture/*.cc" "${ROOT}/src/port/stmlib/*.cc")
+    "${ROOT}/src/engines/macro/models/*.cc" "${ROOT}/src/fx/granular/*.cc"
+    "${ROOT}/src/fx/texture/*.cc" "${ROOT}/src/port/dsputil/*.cc")
 list(FILTER PORT EXCLUDE REGEX "resources_fm_banks\\.cc$")
 # Generated upstream ports retain their original aggregate initialization (0.0f for false).
-# MSVC accepts it; Clang diagnoses it as narrowing. Do not hand-edit the proven generated DSP.
+# Some compilers diagnose legacy aggregate narrowing. Keep generated DSP unchanged.
 set_source_files_properties(${PORT} PROPERTIES COMPILE_OPTIONS "-Wno-narrowing")
 add_library(usina_web_dsp STATIC ${FM} ${FX} ${PORT}
     "${ROOT}/src/dsp/OutputGuard.cpp" "${ROOT}/src/seq/SeqPlayer.cpp" engine.cpp)

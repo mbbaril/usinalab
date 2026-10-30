@@ -2,13 +2,13 @@
 #include "Vapor.h"
 #include "dsp/Resampler.h"
 #include "dsp/Zeroed.h"
-#ifdef _MSC_VER                                          // (the port's warnings are upstream's: kept as written)
+#ifdef _MSC_VER                                          // The port's warnings are upstream's: kept as written
 #pragma warning(push, 0)
 #endif
-#include "fx/clouds/dsp/granular_processor.h"
-#include "fx/clouds/resources.h"
-#include "port/stmlib/dsp/dsp.h"
-#include "port/stmlib/utils/random.h"
+#include "fx/granular/dsp/granular_processor.h"
+#include "fx/granular/resources.h"
+#include "port/dsputil/dsp/dsp.h"
+#include "port/dsputil/utils/random.h"
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -19,19 +19,17 @@
 
 namespace usina::fx {
 
-namespace cl = usina_clouds;
-namespace stm = usina_stmlib;
+namespace cl = usina_granular;
+namespace stm = usina_dsputil;
 
 namespace {
-constexpr double kModuleRate = 32000.0;                  // (clouds.cc: codec.Init(master, 32000))
-constexpr int kBlock = 32;                               // (clouds.cc: codec.Start(32, ...))
-constexpr int kChunk = 512;                              // host samples handled at once (bounds every queue)
-constexpr int kPrepares = 4;                             // the main loop's work between two blocks (see runBlock)
-constexpr float kTop = 65535.0f / 65536.0f;              // (the module's converter's top: see Vapor.h)
-
-// PITCH: the module's quantized table (lut_quantized_pitch, -24 .. +24 semitones over 1024 steps) has its unison
-// between steps 477 and 478, not at its middle (512 is +0.05 semitones: measured 22/10 - on the module its V/OCT
-// calibration takes the offset). Here the knob's centre is that unison, its ends the table's: two straight pieces
+constexpr double kModuleRate = 32000.0;                  // Internal sample rate.
+constexpr int kBlock = 32;                               // Internal block size.
+constexpr int kChunk = 512;                              // Host samples handled at once (bounds every queue)
+constexpr int kPrepares = 4;                             // The main loop's work between two blocks (see runBlock)
+constexpr float kTop = 65535.0f / 65536.0f;              // Upper bound prevents lookup-table overrun.
+// Map knob center to table unison between indices 477 and 478, not index 512.
+// Use two linear segments to preserve the table endpoints at +/-24 semitones.
 float pitchPosition(float knob)
 {
     constexpr float kUnison = 477.5f / 1024.0f;
@@ -40,14 +38,12 @@ float pitchPosition(float knob)
     return std::min(x, kTop);
 }
 
-// cv_scaler.cc's smoothing per block (its transformations_: the pots' filter coefficients; the blend knob's 0.05
-// for the four that knob sets here), indexed by Vapor::Knob. (One index for the knobs, the class's: a second enum here
-// once named its last knob kReverb, which inside Vapor::Impl is the class's MODE kReverb, 4 - REVERB read TEXTURE's
-// knob; measured 22/10, the REVERB knob doing nothing and TEXTURE making a reverb tail)
+// Block smoothing indexed by Vapor::Knob. Reusing mode enum values here
+// can silently address the wrong control.
 constexpr int kNumPots = Vapor::kNumKnobs;
 constexpr float kSmoothing[kNumPots] = { 0.05f, 0.01f, 0.01f, 0.01f, 0.01f, 0.05f, 0.05f, 0.05f, 0.05f };
 
-// stereo frames, first in first out; linear, compacted when the end is reached
+// Stereo frames, first in first out; linear, compacted when the end is reached
 struct Fifo {
     std::vector<float> l, r;
     int head = 0, size = 0;
@@ -65,7 +61,7 @@ struct Fifo {
             std::copy(r.begin() + head, r.begin() + head + size, r.begin());
             head = 0;
         }
-        if (size >= (int)l.size()) return;              // (full: cannot happen with the sizes prepared)
+        if (size >= (int)l.size()) return;              // Full: cannot happen with the sizes prepared
         l[(size_t)(head + size)] = a;
         r[(size_t)(head + size)] = b;
         ++size;
@@ -78,29 +74,29 @@ struct Fifo {
     }
 };
 
-short toCodec(float x)                                   // (the codec's 16 bits: the host's full scale is its)
+short toCodec(float x)                                   // The codec's 16 bits: the host's full scale is its
 {
     return (short)std::lround(std::clamp(x, -1.0f, 1.0f) * 32767.0f);
 }
-} // namespace
+} // Namespace
 
 struct Vapor::Impl {
     double hostRate = 48000.0;
-    std::vector<uint8_t> blockMem = std::vector<uint8_t>(118784);        // (clouds.cc: its two memories)
+    std::vector<uint8_t> blockMem = std::vector<uint8_t>(118784);        // Processor memory regions.
     std::vector<uint8_t> blockCcm = std::vector<uint8_t>(65536 - 128);
     usina::Zeroed<cl::GranularProcessor> processor;
-    uint32_t rng = 0x21;                                 // (the processor's own random generator: stmlib's seed)
+    uint32_t rng = 0x21;                                 // Deterministic DSP random seed.
     float pots[kNumPots] {};
     // LIMIT (Vapor.h): the input's held power, the fed-back signal's ceiling (inside the module)
     double inHeld = 0.0;
-    static constexpr double kHeldFall = 0.99923;         // (a block is 1 ms at 32 kHz: 10 dB in power over ~3 s)
+    static constexpr double kHeldFall = 0.99923;         // A block is 1 ms at 32 kHz: 10 dB in power over ~3 s
 
     bool direct = false;
-    usina::Resampler down, up;                           // host -> module, module -> host
-    int prefill = 0;                                     // module samples of silence ahead of the output
+    usina::Resampler down, up;                           // Host -> module, module -> host
+    int prefill = 0;                                     // Module samples of silence ahead of the output
     double latencyHost = 0.0, upStart = 0.0;
 
-    Fifo inQ, outQ;                                      // at the module's rate
+    Fifo inQ, outQ;                                      // At the module's rate
     std::vector<uint8_t> gateRing = std::vector<uint8_t>(1 << 16), gateQ = std::vector<uint8_t>(1 << 16);
     int64_t hostWritten = 0, moduleIn = 0, gateRead = 0;
     bool previousGate = false;
@@ -122,7 +118,7 @@ struct Vapor::Impl {
             down.prepare(fs, kModuleRate, kChunk);
             const int moduleChunk = (int)std::ceil(kChunk * kModuleRate / fs) + 2 * kBlock + 8;
             up.prepare(kModuleRate, fs, moduleChunk + 4096);
-            // the output must never wait: the converters' half-widths and one block ahead (module samples); the way
+            // The output must never wait: the converters' half-widths and one block ahead (module samples); the way
             // back starts a fraction of a sample early so that the whole delay is whole host samples
             prefill = (int)std::ceil(up.halfWidth() + kBlock + down.halfWidth() * kModuleRate / fs) + 2;
             latencyHost = std::ceil(prefill * fs / kModuleRate);
@@ -157,7 +153,7 @@ struct Vapor::Impl {
         }
     }
 
-    // the mode and quality, as the module's UI sets them (the processor restarts at its next Prepare)
+    // The mode and quality, as the module's UI sets them (the processor restarts at its next Prepare)
     void configure(const Vapor::Knobs& k)
     {
         mode = std::clamp(k.mode, 0, (int)kNumModes - 1);
@@ -167,7 +163,7 @@ struct Vapor::Impl {
         processor->set_quality(quality);
     }
 
-    // turned on: empty, its knobs where they are (the module at power-up: clouds.cc Init). Made anew in zeroed memory
+    // Reconstruct in zeroed storage with settled controls.
     void start(const Vapor::Knobs& k)
     {
         usina::rezero(processor);
@@ -181,15 +177,14 @@ struct Vapor::Impl {
         configure(k);
         const float v[kNumPots] = { k.position, k.size, k.pitch, k.density, k.texture, k.dryWet, k.spread,
                                     k.feedback, k.reverb };
-        for (int i = 0; i < kNumPots; ++i) pots[i] = std::clamp(v[i], 0.0f, 1.0f);   // (settled where the knobs are)
+        for (int i = 0; i < kNumPots; ++i) pots[i] = std::clamp(v[i], 0.0f, 1.0f);   // Settled where the knobs are
         previousGate = false;
-        inHeld = 0.0;                                    // (LIMIT: from rest)
+        inHeld = 0.0;                                    // LIMIT: from rest
         restartStreams();
     }
 
-    // one block of the module (clouds.cc FillBuffer: the CV scaler's read, the processor), after the main loop's
-    // work since the last one (Prepare: the module calls it as often as its processor has time - between two blocks
-    // a few calls finish any splice search and any spectral frame; a call with nothing to do returns at once)
+    // Complete pending splice and spectral work before processing the next block.
+    // Prepare returns immediately when no background work remains.
     void runBlock(const Vapor::Knobs& k)
     {
         stm::Random::Scope scope(&rng);
@@ -206,10 +201,10 @@ struct Vapor::Impl {
         p->stereo_spread = knob(kSpread);
         p->feedback = knob(kFeedback);
         p->reverb = knob(kReverbKnob);
-        p->pitch = stm::Interpolate(cl::lut_quantized_pitch, pitchPosition(pots[kPitch]), 1024.0f);   // (-24 .. +24)
+        p->pitch = stm::Interpolate(cl::lut_quantized_pitch, pitchPosition(pots[kPitch]), 1024.0f);   // -24 .. +24
         p->freeze = k.freeze;
         p->granular.reverse = k.reverse;
-        // the TRIG input: a rising edge in the block, and where the gate is at its end
+        // The TRIG input: a rising edge in the block, and where the gate is at its end
         bool rising = false, gate = previousGate;
         for (int i = 0; i < kBlock; ++i) {
             const bool g = gateQ[(size_t)((gateRead + i) & (int64_t)(gateQ.size() - 1))] != 0;
@@ -227,15 +222,15 @@ struct Vapor::Impl {
             in[i].r = toCodec(inQ.r[(size_t)(inQ.head + i)]);
         }
         inQ.pop(kBlock);
-        // LIMIT (Vapor.h): the input's power held (its peak, falling ~10 dB over 3 s) - the fed-back signal's ceiling
-        // inside the module (+6 dB: the patch in tools/port/port_clouds.py); 0, off: the module as it is
+        // Hold input power with approximately 10 dB decay over 3 s.
+        // Apply the internal +6 dB feedback ceiling when LIMIT is enabled; zero disables it.
         double pin = 0.0;
         for (int i = 0; i < kBlock; ++i) {
             const double a = in[i].l / 32768.0, b = in[i].r / 32768.0;
             pin += 0.5 * (a * a + b * b);
         }
         inHeld = std::max(pin / kBlock, inHeld * kHeldFall);
-        // (the module injects the fed-back signal x 1.4: its power ceiling half the input's, what goes in near its level)
+        // The module injects the fed-back signal x 1.4: its power ceiling half the input's, what goes in near its level
         p->usina_fb_ceiling = k.limit ? (float)std::max(0.5 * inHeld, 1.0e-12) : 0.0f;
         for (int i = 0; i < kPrepares; ++i) processor->Prepare();
         processor->Process(in, out, kBlock);
@@ -298,7 +293,7 @@ struct Vapor::Impl {
             r[i] += (tr[(size_t)i] - r[i]) * fade;
         }
         if (fade <= 0.0f) {
-            if (change && on) {                          // (faded to the plain input: switch, then fade back in)
+            if (change && on) {                          // Faded to the plain input: switch, then fade back in
                 configure(k);
                 restartStreams();
             } else if (!on) {
@@ -323,7 +318,7 @@ void Vapor::process(float* l, float* r, int n, const Knobs& k, const bool* gate,
 {
     auto& s = *impl;
     if (!s.active) {
-        if (!on) return;                                 // (off: the input untouched, bit for bit)
+        if (!on) return;                                 // Off: the input untouched, bit for bit
         s.start(k);
         s.active = true;
     }
@@ -358,7 +353,7 @@ float Vapor::pitchSemitones(float knob)
 
 const char* Vapor::knobName(int mode, int knob)
 {
-    // (granular_processor.cc: what each mode reads each parameter as)
+    // Granular_processor.cc: what each mode reads each parameter as
     static const char* const kNames[kNumModes][kNumKnobs] = {
         { "POSITION", "SIZE", "PITCH", "DENSITY", "TEXTURE", "DRY/WET", "SPREAD", "FEEDBACK", "REVERB" },
         { "POSITION", "SIZE", "PITCH", "DIFFUSION", "FILTER", "DRY/WET", "SPREAD", "FEEDBACK", "REVERB" },
@@ -370,4 +365,4 @@ const char* Vapor::knobName(int mode, int knob)
     return kNames[std::clamp(mode, 0, (int)kNumModes - 1)][std::clamp(knob, 0, (int)kNumKnobs - 1)];
 }
 
-} // namespace usina::fx
+} // Namespace usina::fx

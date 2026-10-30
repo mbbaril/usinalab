@@ -183,9 +183,7 @@ void applyBurst(std::mt19937& rng, const GeneratorParams& params, int partIndex,
     const bool explosionEligible =
         params.style == GeneratorStyle::DrumAndNoise || params.style == GeneratorStyle::PowerNoise;
     if (explosionEligible && partIndex == 5 && unit(rng) < params.burst * params.density) {
-        // Never longer than the Part (2026-09-16): at length 1 this was 2,
-        // explosionStart became -1 and steps[-1] was written - a crash any
-        // host allowing a one-step lane could reach through GENERATE.
+        // Clamp burst length to the part length before computing the start index.
         const int explosionLen = std::min(part.length, std::max(2, part.length / 4));
         const int explosionStart = part.length - explosionLen;
         for (int i = 0; i < explosionStart; ++i)
@@ -254,8 +252,7 @@ Pattern Generator::generate(const GeneratorParams& params, const GeneratorProfil
     // Industrial's trait is uniform, quantized, non-humanized hits ("wall
     // of sound") - the opposite of every other style's jitter.
     const bool suppressJitter = params.style == GeneratorStyle::Industrial;
-    // Dub Techno is deliberately the sparse end of the style range - clamp
-    // density regardless of the user's knob.
+    // Clamp density at the sparse end of the style range.
     const bool clampDensitySparse = params.style == GeneratorStyle::DubTechno;
     // Gabber's defining trait is a kick locked to every downbeat with
     // near-zero variation - overrides regularity for the kick part
@@ -364,12 +361,7 @@ Pattern Generator::generate(const GeneratorParams& params, const GeneratorProfil
         if (profile.afterPart != nullptr)
             profile.afterPart(partIndex, part);
 
-        // Unlike the Volca-family project this was extracted from (which
-        // turned accentAmount into a hardware-specific Level+Drive CC-lock
-        // proxy here, since that hardware has no velocity response), this
-        // core library leaves accentAmount as plain data - a host
-        // application decides how its own synthesis engine expresses
-        // accent (real velocity, a gain stage, a filter push, whatever).
+        // Store accent strength in the shared step; hosts map it to instrument-specific controls.
 
         pattern.parts[static_cast<size_t>(partIndex)] = std::move(part);
     }
@@ -377,4 +369,4 @@ Pattern Generator::generate(const GeneratorParams& params, const GeneratorProfil
     return pattern;
 }
 
-} // namespace ruidocore
+} //

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina - the UNISON operator mode (28/10; the user: "um modo de superwaves é necessário... supersaw, squares etc...
-// um virtual analog super gordo"): the operator's wave as a stack of 1..9 copies, each a little off the pitch, summed.
+// Usina UNISON operator: sums 1..9 detuned copies of the operator waveform.
 // A: VOICES (1..9, a list); B: DETUNE (how far the outermost copies go: fine at first, wide at the top); C: MIX (the
 // centre copy against the others: 0 the centre alone, 200 the sides on top); D: DRIFT (each copy wandering slowly and
 // on its own, as analog oscillators never sit still). Two more of the operator's own values: SUB (a square an octave
@@ -72,6 +71,22 @@ struct UnisonState {
     std::array<double, kUnisonMax> ph {}, drift {}, target {}, pwmPh {};
     double subPh = 0.0;
     int countdown = 0;
+    // (kept, not worked out again every sample -, the same values: each copy's place for this VOICES, each copy's
+    // PWM step for this rate)
+    std::array<double, kUnisonMax> pos {}, pwmStep {};
+    int posN = 0;
+    double pwmFs = 0.0;
+    void places(int n, double fs)
+    {
+        if (n != posN) {
+            for (int i = 0; i < kUnisonMax; ++i) pos[(size_t)i] = unisonPosition(i, n);
+            posN = n;
+        }
+        if (fs != pwmFs) {
+            for (int i = 0; i < kUnisonMax; ++i) pwmStep[(size_t)i] = unisonPwmRate(i) / fs;
+            pwmFs = fs;
+        }
+    }
     void start(uint32_t& rng)                            // (a note: random phases, the drifts from rest)
     {
         for (int i = 0; i < kUnisonMax; ++i) {

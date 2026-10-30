@@ -11,7 +11,7 @@ struct D { const char* name; int min, max, def; };
 // an operator's 27 (eng_opx.c OPX_PD). FIXED HZ from 0: a preset stores 0 for "never set" (the operator then is not
 // fixed; the firmware's SET writes >= 1). The defaults: the init patch's operator (OP1 differs: LEVEL 100)
 const D kOp[kOpValues] = {
-    { "MODE", 0, 13, 0 }, { "WAVE", 0, 32, 0 }, { "FREQ", 0, 1, 0 }, { "COARSE", 0, 38, 7 }, { "FINE", 50, 200, 100 },
+    { "MODE", 0, 14, 0 }, { "WAVE", 0, 32, 0 }, { "FREQ", 0, 1, 0 }, { "COARSE", 0, 38, 7 }, { "FINE", 50, 200, 100 },
     { "DETUNE", -50, 50, 0 }, { "TRANS", -12, 12, 0 }, { "FIXED HZ", 0, 999999, 0 }, { "LEVEL", 0, 100, 0 },
     { "ATK", 0, 127, 0 }, { "DEC", 0, 127, 0 }, { "SUS", 0, 100, 100 }, { "REL", 0, 127, 26 }, { "CURVE", 0, 10, 0 },
     { "A", 0, 100, 0 }, { "B", 0, 100, 0 }, { "C", 0, 200, 100 }, { "VEL", 0, 100, 0 }, { "EG1", -2304, 2304, 0 },
@@ -35,7 +35,7 @@ const D kGlobal[] = {
     { "DIRECT OUT", 0, 63, 1 } };
 const D kGlobalTail[] = {
     { "HP CUT", 0, 1000, 0 }, { "HP PEAK", 0, 100, 0 }, { "FLT DRIVE", 0, 100, 0 }, { "CASC FB", -100, 100, 0 },
-    { "HP EG2 INT", -2272, 2272, 0 }, { "HP LFO2 INT", -2272, 2272, 0 }, { "LOFI", 0, 1, 0 }, { "CASC VCA", 0, 2, 0 },
+    { "HP EG2 INT", -2272, 2272, 0 }, { "HP LFO2 INT", -2272, 2272, 0 }, { "LOFI", 0, 1, 0 }, { "CASC VCA", 0, 3, 0 },
     { "CASC OUT", 0, 32, 0 }, { "OP1 VEL PITCH", -100, 100, 0 }, { "OP2 VEL PITCH", -100, 100, 0 },
     { "OP3 VEL PITCH", -100, 100, 0 }, { "OP4 VEL PITCH", -100, 100, 0 }, { "OP5 VEL PITCH", -100, 100, 0 },
     { "OP6 VEL PITCH", -100, 100, 0 }, { "VEL COARSE", 0, 63, 0 }, { "CASC HOT", 0, 1, 0 }, { "CMOS LIFE", 0, 100, 0 },
@@ -93,7 +93,7 @@ std::vector<ValueDesc> build()
     }
     for (int k = 1; k <= 3; ++k) {                      // COMB 1..3
         const std::string c = "COMB" + std::to_string(k) + " ";
-        add(c + "TYPE", 0, 12, 0);                       // (FmModSources.h CombType)
+        add(c + "TYPE", 0, 16, 0);                       // (FmModSources.h CombType; 13..16 the binary ones)
         add(c + "SOURCE", 0, 24, 0);                     // a source (FmMod.h; a COMB only the ones before it)
         add(c + "MOD", 0, 24, 0);
         add(c + "AMOUNT", -100, 100, 50);
@@ -111,7 +111,7 @@ std::vector<ValueDesc> build()
         const std::string p = e < 6 ? "OP" + std::to_string(e + 1) + ".ENV " : e == EV_EG1 ? "EG1 " : e == EV_EG2 ? "EG2 "
                                                                                                           : "ENV1 ";
         add(p + "MODE", 0, 2, 0);                        // ADSR, ADR (the key's length ignored: no sustain), LOOP
-                                                         // (attack and decay again while the key is held, 22/10)
+                                                         // (attack and decay again while the key is held)
         add(p + "ATK CURVE", 0, 10, 0);                  // linear (the firmware's) .. fast-then-slow
         add(p + "REL CURVE", -1, 10, -1);                // -1: CURVE's (as the firmware: one curve for both)
         add(p + "RETRIG", 0, 24, 0);                     // a source: its rise past 0.5 strikes the envelope again
@@ -126,7 +126,7 @@ std::vector<ValueDesc> build()
         add(o + "IRREG", 0, 100, 0);                     // added to the material's own irregularity
         add(o + "STRIKE", 0, 100, 80);                   // the mallet at every note
         add(o + "HARDNESS", 0, 100, 60);                 // the mallet's (and the input's) brightness
-        add(o + "EXCITER", 0, 4, 0);                     // stage 2: STRIKE, BOW, BLOW, SCRAPE; DROP (28/10)
+        add(o + "EXCITER", 0, 4, 0);                     // stage 2: STRIKE, BOW, BLOW, SCRAPE; DROP
         add(o + "PRESSURE", 0, 100, 50);                 // the bow's pressure, the breath's turbulence, the scrape's rate
         add(o + "TENSION", 0, 100, 0);                   // the pitch rising with the amplitude (a gong, a tom)
         add(o + "RATTLE", 0, 100, 0);                    // a contact buzzing on the peaks (a snare, a chain, a bridge)
@@ -136,7 +136,7 @@ std::vector<ValueDesc> build()
         add(s + "SYNC", 0, 14, 0);                       // FREE, 1/32 .. 4 BARS (kSyncBeats): FUNC its curve once a
         add(s + "RETRIG", 0, 24, 0);                     // division, RAND a step; a source's rise restarts it
     }
-    add("LPG MODE", 0, 2, 0);                            // the voice's low pass gate (FmLpg.h): OFF, PING, EG2
+    add("LPG MODE", 0, 3, 0);                            // the voice's low pass gate (FmLpg.h): OFF, PING, EG2, SOURCE
     add("LPG DECAY", 0, 100, 50);
     add("LPG COLOR", 0, 100, 50);
     for (int k = 1; k <= 6; ++k)                        // the operators' RATE KEY: at 100 %, an octave above KT CENTER
@@ -147,6 +147,27 @@ std::vector<ValueDesc> build()
         add("OP" + std::to_string(k) + ".SUB", 0, 100, 0);
     for (int k = 1; k <= 6; ++k)                        // the operators' UNISON PWM: the squares' widths moving
         add("OP" + std::to_string(k) + ".PWM", 0, 100, 0);
+    add("SPREAD", 0, 2, 0);                              // the voices in stereo: KEY, ALTERNATE, RANDOM
+    add("WIDTH", 0, 100, 0);                             // (0: mono, every voice in the middle, as before)
+    add("PAN", -100, 100, 0);
+    for (int k = 1; k <= 6; ++k)                        // stereo, stage 2: the operator's WIDTH (UNISON, MODAL)
+        add("OP" + std::to_string(k) + ".WIDTH", 0, 100, 0);
+    add("FLT OFFSET", -48, 48, 0);                       // the voice filter's right cutoff from its left (semitones)
+    // the LPG in stereo and its sources: a modulation source (FmMod.h's 0..43; FmEngine checks the count)
+    add("LPG SOURCE", 0, 43, 0);
+    add("LPG R MODE", 0, 3, 0);                          // SAME (the left's gate), PING, EG2, SOURCE
+    add("LPG R SOURCE", 0, 43, 0);
+    add("LPG R DECAY", -100, 100, 0);                    // (added to DECAY, the right's)
+    add("CASC SOURCE", 0, 43, 0);                        // SK CASC's VCA when it follows a source (CASC VCA 3)
+    // Second voice filter. F2 TYPE indexes the voice types with SK CASC removed.
+    add("F2 ROUTE", 0, 3, 0);                            // OFF, SERIES, PARALLEL, STEREO
+    add("F2 TYPE", 0, 16, 0);
+    add("F2 CUTOFF", 0, 1000, 1000);                     // same law as CUTOFF
+    add("F2 RESO", 0, 100, 0);
+    add("F2 DRIVE", 0, 100, 0);
+    add("F2 EG2 INT", -2272, 2272, 0);                   // 1/16 semitone
+    add("F2 KEY", -200, 200, 0);                         // key tracking, % per semitone from KEY CTR
+    add("F2 MIX", 0, 100, 100);
     // (every value: the firmware's, then ours, exactly as the enums count them)
     if ((int)v.size() != kNumValues) std::abort();       // (a table that disagrees with the enums: stop at once)
     return v;

@@ -8,12 +8,9 @@
 
 namespace ruidocore {
 
-// WHAT KIND of disruption, as opposed to how much of it (2026-09-17).
+// Transform type is independent of transform amount.
 //
-// Built from the user's own framing: "glitch nao quer dizer
-// necessariamente ser sempre rapido, e justamente bursts, chops de
-// eventos, usar multiply e divide de clock, quebrar a assinatura de
-// tempo" - and, on repetition, "se repetir e a coisa mais anti-glitch".
+// Transforms include bursts, cuts, repeats, clock changes and silence.
 //
 // So the engine has two layers.
 //
@@ -23,11 +20,8 @@ namespace ruidocore {
 // which is why wide open it read as one uniform noise rather than as
 // something happening.
 //
-// STRUCTURE is what the quote is about. A gesture LASTS: a chop is a run
-// of silence rather than scattered dropouts, a warp is a whole Part
-// running at another clock long enough to walk out of the bar and back
-// in, a dive is a pitch falling across four hits rather than one odd
-// note. Gestures are the part a listener can point at.
+// A glitch gesture spans an interval: chops produce bounded silence runs and
+// warps apply temporary part-clock changes. Amount controls intensity separately.
 //
 // The weights below are RELATIVE, not probabilities - all equal means
 // "surprise me", and zeroing one takes it out of the vocabulary.
@@ -102,10 +96,8 @@ struct GlitchParams {
     // makes each one legible; at 1 a Part is almost always inside one.
     float gestureDensity = 0.6f;
 
-    // HOW MANY unrelated CCs one step may throw at once, at full amount
-    // (user: "abusar de envio de ccs"). 1 is the old single polite CC.
-    // Clamped to kMaxStormWidth by the engine, which is what keeps the
-    // whole thing inside the DIN's own budget.
+    // Maximum simultaneous independent controller changes per step at full amount.
+    // Clamp to kMaxStormWidth.
     int stormWidth = 4;
 
     // How far a warp may bend the clock: multiplier and divider are drawn
@@ -114,12 +106,7 @@ struct GlitchParams {
     int warpDepth = 4;
 };
 
-// What an instrument can actually hear of each glitch transform, and
-// how its own fields follow (2026-09-16). Six Volca-family copies of this
-// engine differed only here: one had no pitch, one no accent, one rebuilt
-// accent CCs, one moved a pitch offset alongside the note. A transform
-// switched off draws NOTHING from the random stream, so a profile
-// reproduces exactly what an engine written without that transform did.
+// Host capability profile and hooks for audible transform effects.
 //
 // Hooks are plain function pointers: process() runs on the audio thread.
 struct GlitchProfile {
@@ -177,14 +164,7 @@ public:
     std::vector<FiredStep> process(const Pattern& pattern, const std::vector<FiredStep>& trueFired,
                                     int globalStepIndex);
 
-    // The REAL-TIME form (2026-09-23), the same shape as Sequencer::tick(out).
-    // Reads `count` fired steps straight from the caller's buffer - no copy
-    // into an input vector - and writes into `out`, reusing its slots and
-    // each slot's `locks` capacity. Returns how many entries at the FRONT of
-    // `out` are valid; anything after them is stale and kept only for its
-    // capacity. process() allocated a fresh vector per step, which every
-    // host then move-assigned over its reserved buffer - measured as most of
-    // the Sample2's and the Kick's audio-thread allocations.
+    // Realtime form reads and rewrites the caller-owned event buffer without allocation.
     std::size_t processInto(const Pattern& pattern, const FiredStep* trueFired, std::size_t count,
                             int globalStepIndex, std::vector<FiredStep>& out);
 
@@ -250,4 +230,4 @@ private:
     int lastStepIndex = -1;
 };
 
-} // namespace ruidocore
+} //

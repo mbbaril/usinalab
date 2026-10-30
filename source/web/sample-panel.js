@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// SAMPLE (engines/fm/FmSample.h): the recording the SAMPLE operators play, on the web and the APK - LOAD a file
-// (decoded by the browser, mixed to mono, up to 30 s), CAPTURE the audio input (up to 20 s; the worklet records it
-// as it comes and hands it back), CLEAR. Kept on this device (IndexedDB) so the next visit plays it again; the
-// region START / LENGTH lit on its waveform.
+// Load, capture and persist mono recordings for SAMPLE operators.
+// File decode is limited to 30 s; live capture to 20 s. START/LENGTH highlight
+// the playback region; indexed storage retains recordings across visits.
 const DB='usina-sample',STORE='recording';
 function idb(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});}
 async function keep(rec){try{const db=await idb();await new Promise((ok,no)=>{const t=db.transaction(STORE,'readwrite');rec?t.objectStore(STORE).put(rec,'current'):t.objectStore(STORE).delete('current');t.oncomplete=ok;t.onerror=()=>no(t.error);});}catch{}}
@@ -19,7 +18,7 @@ export function createSamplePanel({el,send,status,param,context,ensureInput=asyn
       take({samples:mono,rate:audio.sampleRate},file.name.replace(/\.[^.]+$/,''));status(`SAMPLE: ${file.name} (${(n/audio.sampleRate).toFixed(2)} s)`);}
     catch{status(`${file.name} não pôde ser lido como áudio.`,true);}
   }
-  // the worklet's answer to a stop (always one, 27/10: an empty capture used to leave the page waiting forever)
+  // Always handle stop acknowledgement, including an empty capture.
   function captured(data){capturing=false;clearInterval(timer);
     if(data?.samples){take({samples:data.samples,rate:data.rate},`CAPTURA ${new Date().toLocaleTimeString()}`);status(`SAMPLE: captura de ${(data.samples.length/data.rate).toFixed(2)} s.`);}
     else status('Nada foi gravado: a entrada de áudio não trouxe som (o microfone está liberado para o site?).',true);paint();}

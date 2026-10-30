@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The SAMPLE operator, measured (rule 25; engines/fm/FmSample.h): a recording played, its sound analysed.
-//   PITCH     at C3 the recording as it is (a 441 Hz sine: 441 Hz), at C4 an octave up
-//   ONCE      it ends where the region ends (silence after, the envelope still open)
-//   REVERSE   a rising ramp heard falling
-//   XFADE     a loop whose seam jumps: crossfaded, the largest step between two samples much smaller
-//   MODAL     into a MODAL operator (STRIKE 0: only what comes in sounds it), the object rings; without it, silence
-//   HANDOVER  recordings given while it renders: none allocated or freed on the render's side
+// Validate sample-operator pitch, playback modes, region boundaries, interpolation,
+// retriggering, modulation response and transition continuity.
 #include "engines/fm/FmEngine.h"
 #include <atomic>
 #include <cmath>
@@ -17,7 +12,7 @@
 #include <string>
 #include <vector>
 
-// every allocation and free in this program, counted (the render must cause none)
+// Every allocation and free in this program, counted (the render must cause none)
 static std::atomic<long> allocations { 0 }, frees { 0 };
 void* operator new(std::size_t n)
 {
@@ -74,7 +69,7 @@ std::vector<float> render(Engine& e, const std::map<std::string, int>& vals, int
     return L;
 }
 
-// the frequency by the rising zero crossings over x[a, b)
+// The frequency by the rising zero crossings over x[a, b)
 double frequency(const std::vector<float>& x, size_t a, size_t b)
 {
     double first = -1.0, last = -1.0;
@@ -95,7 +90,7 @@ double rms(const std::vector<float>& x, size_t a, size_t b)
     for (size_t i = a; i < b && i < x.size(); ++i) s += (double)x[i] * x[i];
     return std::sqrt(s / (double)std::max<size_t>(1, b - a));
 }
-} // namespace
+} // Namespace
 
 int main()
 {
@@ -118,7 +113,7 @@ int main()
         e->setSample(recording(24000, 48000.0, [](int i, int) { return 0.5 * std::sin(2.0 * kPi * 300.0 * i / 48000.0); }));
         const auto y = render(*e, sampler(SR_ONCE, 0, 100, 0), 60, 0.5);
         const double during = rms(y, 2400, 10800), after = rms(y, 13200, 24000);
-        // (the loudness against an FM operator's sine at the same LEVEL: a recording at 0.5 is about half of it)
+        // The loudness against an FM operator's sine at the same LEVEL: a recording at 0.5 is about half of it
         auto f = std::make_unique<Engine>();
         f->prepare(kFs, false, kFs);
         const auto fm = render(*f, { { "ALGO", 0 }, { "OP1.MODE", FM }, { "OP1.LEVEL", 100 }, { "OP1.SUS", 100 } }, 60, 0.3);
@@ -132,7 +127,7 @@ int main()
         e->prepare(kFs, false, kFs);
         e->setSample(recording(48000, 48000.0, [](int i, int) {
             const double t = i / 48000.0;
-            return 0.7 * std::sin(2.0 * kPi * (200.0 * t + 900.0 * t * t)); }));   // (200 + 1800 t Hz)
+            return 0.7 * std::sin(2.0 * kPi * (200.0 * t + 900.0 * t * t)); }));   // 200 + 1800 t Hz
         const auto y = render(*e, sampler(SR_REVERSE, 0, 200, 0), 60, 0.9);
         const double early = frequency(y, 1200, 6000), late = frequency(y, 33600, 38400);
         check(early > 1700.0 && late < 800.0 && late > 0.0, "REVERSE: the rising glide heard falling (Hz at the end)", late,
@@ -158,7 +153,7 @@ int main()
         const auto modal = [](bool withSample) {
             auto e = std::make_unique<Engine>();
             e->prepare(kFs, false, kFs);
-            if (withSample)   // a short noise burst, as a hand on a can
+            if (withSample)   // A short noise burst, as a hand on a can
                 e->setSample(recording(4800, 48000.0, [](int i, int) {
                     unsigned s = 2463534242u + (unsigned)i * 2654435761u;
                     s ^= s << 13; s ^= s >> 17; s ^= s << 5;
@@ -167,7 +162,7 @@ int main()
                 { "OP1.C", 100 }, { "OP1.D", 60 }, { "OP1.LEVEL", 90 }, { "OP1.SUS", 100 }, { "OP1.STRIKE", 0 },
                 { "OP2.MODE", SAMPLE }, { "OP2.A", SR_ONCE }, { "OP2.C", 200 }, { "OP2.LEVEL", 100 }, { "OP2.SUS", 100 } };
             const auto y = render(*e, v, 57, 0.8);
-            return rms(y, 9600, 38400);                  // (after the burst: the object ringing)
+            return rms(y, 9600, 38400);                  // After the burst: the object ringing
         };
         const double rung = modal(true), quiet = modal(false);
         check(rung > 1e-3 && quiet < 1e-5, "MODAL: excited by the recording (rms; without: silent)", rung, "> 1e-3, < 1e-5 without");
@@ -192,24 +187,23 @@ int main()
         }
         check(renderAllocs == 0 && renderFrees == 0, "HANDOVER: allocations + frees inside render", (double)(renderAllocs + renderFrees), "0");
     }
-    // NO CLICK (28/10; the user heard pops: in FM a modulator's corner is a jump in its carrier's phase). A recording that
-    // is loud where it starts and where it is cut (a 441 Hz sine at 0.8, START at 30 %, LENGTH 10 %: both mid-wave):
-    // its largest step between two samples at the start and at the end, against the sine's own largest step
+    // Check transition continuity with a loud recording cut at nonzero waveform points.
+    // Abrupt sample boundaries can become carrier-phase jumps under FM.
     {
         const auto sine = [](int i, int) { return 0.8 * std::sin(2.0 * kPi * 441.0 * i / 48000.0 + 0.7); };
-        const double natural = 0.8 * 2.0 * kPi * 441.0 / kFs;   // (the sine's steepest step a sample)
+        const double natural = 0.8 * 2.0 * kPi * 441.0 / kFs;   // The sine's steepest step a sample
         const auto steps = [&](int read, int fade, double& atStart, double& atEnd, std::vector<float>* keep = nullptr) {
             auto e = std::make_unique<Engine>();
             e->prepare(kFs, false, kFs);
             e->setSample(recording(48000, 48000.0, sine));
-            const auto y = render(*e, sampler(read, 30, 20, fade), 60, 0.3);   // (LENGTH 20 of 200: 10 % of the rest)
-            const size_t end = (size_t)(0.70 * 48000 * 0.10);                // (the region: 3360 samples at C3)
+            const auto y = render(*e, sampler(read, 30, 20, fade), 60, 0.3);   // LENGTH 20 of 200: 10 % of the rest
+            const size_t end = (size_t)(0.70 * 48000 * 0.10);                // The region: 3360 samples at C3
             atStart = atEnd = 0.0;
             for (size_t i = 1; i < 480; ++i) atStart = std::max(atStart, (double)std::fabs(y[i] - y[i - 1]));
             for (size_t i = end - 480; i < end + 480 && i < y.size(); ++i) atEnd = std::max(atEnd, (double)std::fabs(y[i] - y[i - 1]));
             if (keep) *keep = y;
         };
-        // the operator at LEVEL 100 scales the recording: the natural step, in its output's units
+        // The operator at LEVEL 100 scales the recording: the natural step, in its output's units
         auto ref = std::make_unique<Engine>();
         ref->prepare(kFs, false, kFs);
         ref->setSample(recording(48000, 48000.0, sine));
@@ -230,8 +224,8 @@ int main()
         double fs0, fe0;
         steps(SR_ONCE, 50, fs0, fe0, &f);
         double peakEarly = 0.0, peakLater = 0.0;
-        for (size_t i = 300; i < 380; ++i) peakEarly = std::max(peakEarly, (double)std::fabs(f[i]));   // (~6.6 .. 7.9 ms)
-        for (size_t i = 960; i < 1100; ++i) peakLater = std::max(peakLater, (double)std::fabs(f[i]));  // (past the fade)
+        for (size_t i = 300; i < 380; ++i) peakEarly = std::max(peakEarly, (double)std::fabs(f[i]));   // ~6.6 .. 7.9 ms
+        for (size_t i = 960; i < 1100; ++i) peakLater = std::max(peakLater, (double)std::fabs(f[i]));  // Past the fade
         const double half = peakEarly / std::max(1e-9, peakLater);
         check(half > 0.35 && half < 0.65, "FADE 50 = 14 ms: half way, half the level (x)", half, "0.35 .. 0.65");
     }
@@ -244,7 +238,7 @@ int main()
         double big = 0.0, steady = 0.0;
         float last = 0.0f;
         for (int i = 0; i < 9600; ++i) {
-            if (i == 4800 + 37) sp.start(SR_LOOP, 12000.5, 47999.0);   // (again, from another place in the wave)
+            if (i == 4800 + 37) sp.start(SR_LOOP, 12000.5, 47999.0);   // Again, from another place in the wave
             const float y = sp.process(*s, SR_LOOP, i < 4837 ? 0.0 : 12000.5, 47999.0, 0.0, 1.0, 0.0, kFs * 0.001);
             if (i > 1 && i < 4800) steady = std::max(steady, (double)std::fabs(y - last));
             if (i >= 4837 && i < 4837 + 480) big = std::max(big, (double)std::fabs(y - last));

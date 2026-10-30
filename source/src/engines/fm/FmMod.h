@@ -2,7 +2,7 @@
 // Usina FM engine - the modulation: 24 sources and the routes from them to the patch's values (docs/MODULACAO.md).
 //   the sources   keyboard (velocity, aftertouch, mod wheel, key, expression), ENV 1..3 (ENV 2 = EG1, ENV 3 = EG2),
 //                 LFO 1..3, FUNC 1..3, RAND 1..3, COMB 1..3 (their stage: 0 until then), MACRO 1..4; then SEQ 1..4,
-//                 CTRL 1..8, and the operators' own envelopes OP1 ENV .. OP6 ENV (21/10; new ones only at the end)
+//                 CTRL 1..8, and the operators' own envelopes OP1 ENV .. OP6 ENV (new ones only at the end)
 //   a route       a source, a destination (a value of the patch, by its index in FmSchema), an amount -1..1: the
 //                 share of the value's range the source moves it at full (the source at 1: + amount x the range)
 // The engine reads the routes once a control block per voice and moves the destinations continuously (between the
@@ -109,9 +109,8 @@ inline bool isModulatable(int idx)
                (g >= GV_E1ATK && g <= GV_E1CRV) || (g >= GV_E2ATK && g <= GV_E2CRV) ||   // EG1, EG2
                g == GV_L1SPD || g == GV_L1FADE || g == GV_L2SPD || g == GV_L2FADE;        // LFO1, LFO2
     }
-    // the sources' own settings (the user, 21/10: "tempo de lfo1 por lfo2 e por ai vai"): ENV 1's, LFO 3's SPEED and
-    // FADE, FUNC's SPEED and SMOOTH, RAND's SPEED, A, B, RISE, FALL, COMB's AMOUNT, the LFOs' SYMMETRY and MORPH, the
-    // envelopes' ATK CURVE
+    // Modulatable source settings: ENV 1, LFO 3 SPEED/FADE, FUNC SPEED/SMOOTH,
+    // RAND SPEED/A/B/RISE/FALL, COMB AMOUNT, LFO SYMMETRY/MORPH and ATK CURVE.
     {
         const int x = idx - kFwValues;
         if (x >= XV_ENV1ATK && x <= XV_ENV1CRV) return true;
@@ -123,6 +122,10 @@ inline bool isModulatable(int idx)
         if (x >= XV_EV1MODE && x < XV_O1MAT) return (x - XV_EV1MODE) % kEnvXValues == 1;
         if (x == XV_LPGDECAY || x == XV_LPGCOLOR) return true;   // (the LPG's: not its MODE, a list)
         if (x >= XV_O1DAMP && x < XV_O1PWM + 6) return true;      // (MODAL's DAMP, UNISON's SUB and PWM)
+        if (x == XV_WIDTH || x == XV_PAN) return true;            // (the voices in stereo; not SPREAD, a list)
+        if ((x >= XV_O1WIDTH && x < XV_O1WIDTH + 6) || x == XV_FLTOFF) return true;   // (stereo, stage 2)
+        if (x == XV_LPGRDEC) return true;                         // (the right LPG's DECAY; not the lists)
+        if (x >= XV_F2CUT && x <= XV_F2MIX) return true;          // second filter: continuous values only
     }
     // MODAL's continuous values (FmModal.h): BRIGHT, STIFF, POSITION, IRREG, STRIKE, HARDNESS, PRESSURE, TENSION,
     // RATTLE (not MATERIAL nor EXCITER, lists; nor DENSITY, a count)
@@ -133,17 +136,18 @@ inline bool isModulatable(int idx)
     return false;
 }
 
-// The routes' other destinations: the effects' knobs - one for the plugin, not a voice's (21/10: the texture moved by
+// The routes' other destinations: the effects' knobs - one for the plugin, not a voice's (the texture moved by
 // the matrix). Their indices sit past the patch's (kFxDst + n), so the engine, which takes only isModulatable() ones,
 // never sees them: the processor moves these, from the sources as the newest voice has them (Engine::liveSource), on
 // the knob's own 0..1 travel (amount 1 = the whole travel). Saved by their names, as the patch's values. New ones only
-// at the end (the distortion's, 21/10, after the texture's; VAPOR's, 22/10, after the IR's; DELAY's after VAPOR's)
+// at the end (the distortion's,, after the texture's; VAPOR's,, after the IR's; DELAY's after VAPOR's)
 constexpr int kFxDst = 1 << 20;
 enum FxDst { FD_TEX_TIME, FD_TEX_SIZE, FD_TEX_SHAPE, FD_TEX_PITCH, FD_TEX_DENSITY, FD_TEX_FEEDBACK, FD_TEX_DRYWET,
              FD_TEX_REVERB, FD_DIST_DRIVE, FD_DIST_CHAR, FD_DIST_SYM, FD_DIST_TONE, FD_DIST_MIX,
              FD_IR_MIX, FD_IR_LOW, FD_IR_HIGH, FD_VAP_POSITION, FD_VAP_SIZE, FD_VAP_PITCH, FD_VAP_DENSITY,
              FD_VAP_TEXTURE, FD_VAP_DRYWET, FD_VAP_SPREAD, FD_VAP_FEEDBACK, FD_VAP_REVERB,
              FD_DLY_TIME, FD_DLY_FEEDBACK, FD_DLY_LOWCUT, FD_DLY_HIGHCUT, FD_DLY_WOW, FD_DLY_MIX, FD_DLY_FLUTTER,
+             FD_FXF_CUTOFF, FD_FXF_RESO, FD_FXF_DRIVE, FD_FXF_SPREAD, FD_FXF_FOLLOW, FD_FXF_MIX,
              kNumFxDst };
 inline bool isFxDst(int d) { return d >= kFxDst && d < kFxDst + kNumFxDst; }
 inline const char* fxDstName(int d)                     // (stable forever: saved sessions name them)
@@ -154,7 +158,9 @@ inline const char* fxDstName(int d)                     // (stable forever: save
                                               "IR LOW CUT", "IR HIGH CUT", "VAP POSITION", "VAP SIZE", "VAP PITCH",
                                               "VAP DENSITY", "VAP TEXTURE", "VAP DRY/WET", "VAP SPREAD",
                                               "VAP FEEDBACK", "VAP REVERB", "DLY TIME", "DLY FEEDBACK",
-                                              "DLY LOW CUT", "DLY HIGH CUT", "DLY WOW", "DLY MIX", "DLY FLUTTER" };
+                                              "DLY LOW CUT", "DLY HIGH CUT", "DLY WOW", "DLY MIX", "DLY FLUTTER",
+                                              "FXF CUTOFF", "FXF RESO", "FXF DRIVE", "FXF SPREAD", "FXF FOLLOW",
+                                              "FXF MIX" };
     return isFxDst(d) ? N[d - kFxDst] : "";
 }
 inline const char* fxDstParamId(int d)                  // (the plugin parameter the knob is)
@@ -165,7 +171,9 @@ inline const char* fxDstParamId(int d)                  // (the plugin parameter
                                               "ir_lowcut", "ir_highcut", "vap_position", "vap_size", "vap_pitch",
                                               "vap_density", "vap_texture", "vap_drywet", "vap_spread",
                                               "vap_feedback", "vap_reverb", "dly_time", "dly_feedback",
-                                              "dly_lowcut", "dly_highcut", "dly_wow", "dly_mix", "dly_flutter" };
+                                              "dly_lowcut", "dly_highcut", "dly_wow", "dly_mix", "dly_flutter",
+                                              "fxf_cutoff", "fxf_reso", "fxf_drive", "fxf_spread", "fxf_follow",
+                                              "fxf_mix" };
     return isFxDst(d) ? I[d - kFxDst] : "";
 }
 inline int fxDstOfParamId(const std::string& id)

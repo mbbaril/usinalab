@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - the filter kernels of the operators (FILTER, FILTER FM) and of the voice: topology-preserving
-// (zero-delay feedback), after Zavalishin's "The Art of VA Filter Design", in floating point. The reference is the
-// CALDERA firmware's (usina16 opx_core.c), coefficient for coefficient:
-//   SVF     Simper's trapezoidal state-variable filter: LP HP BP (unity at the peak) BR; two in a row for 24 dB
-//   SK      a Sallen-Key low- and high-pass, the loop's input through tanh (ported there from sst-filters, GPL-3.0-
-//           or-later, the Surge Synth Team); HOT: the loop saturating at the signal's level (S tanh(v / S), S = 4)
-//   LADDER  four one-poles in a loop solved at once, tanh on its input; the multimode outputs; OTA: driven softer
-// The states are held to +-16 (a runaway clips, never grows: the firmware's opx_fhold).
+// Usina FM engine: topology-preserving operator and voice filter kernels.
+// SVF: trapezoidal state-variable LP, HP, BP and BR; cascaded for 24 dB/oct.
+// Sallen-Key: low/high-pass with tanh input saturation; HOT scales the loop
+// saturation to the signal level, S * tanh(v / S), S = 4.
+// LADDER: four coupled one-poles with input saturation; OTA uses softer drive.
+// Sallen-Key kernels derive from sst-filters, GPL-3.0-or-later, Surge Synth Team.
+// States are clamped to +/-16. Technical references and credits: THIRD_PARTY.md.
 #pragma once
 #include <algorithm>
 #include <cmath>

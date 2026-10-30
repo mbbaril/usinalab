@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import {installPerformanceKeys,installReleaseGuard} from './performance-keyboard.js';
+import {keyboardSlider} from './accessible-controls.js';
 // PLAY (docs/PLAY.md): the sound played, not edited - the organ's manuals or the grid, the four macros, the snapshots
 // A..D and the XY between them (REC: a gesture looped), HOLD, LOCK, the velocity by the touch's height. Two
 // destinations: HERE (this app's engine) and CONTROL (a MIDI output: the plugin on the computer, another instance,
@@ -8,16 +10,19 @@ import {whitesFor,organKeys,organNoteAt,gridPitch,velocityAt,mixSnapshots,easeGl
 import {cabineScales} from './cabine-keys.js';
 import {MpeEncoder,pitchCoordinate} from './mpe.js';
 import {MidiOutput} from './midi-output.js';
+import {snapshotPresentation,motionPresentation,installSnapshotPress} from './play-feedback.js';
+import {releasePointerChoiceFocus} from './typing-keyboard.js';
 const KEY='usina.play';
 export function createPlaySurface({el,status,local}){
   let s=load(),root=null,keysBox=null,xyBox=null,frame=0,glide=null,looping=false,recording=null,armed=false,hold=false,gestureOn=false,syncOptions=()=>{};
-  const touches=new Map(),counts=new Map(),latched=new Set(),macroEls=[],snapEls=[];
+  const noteOwners=new Map(),touches=new Map(),counts=new Map(),latched=new Set(),macroEls=[],snapEls=[];
+  const snapshotCancels=[];let captureSnapshot=false;
   const output=new MidiOutput((text,event)=>{if(event?.released||!output.ready)encoder.clear();if(text)status(text);paintHead();});
   const encoder=new MpeEncoder(packets=>output.send(packets).then(()=>true).catch(e=>{if(!e.canceled)status(e.message,true);return false;}));
   // HERE's BEND: the engine's own MPE (a member channel a finger, its range set as it starts; channel 1 stays the
   // keyboard of the CABINE and the sequencer - src/engines/fm/PerformanceMidi.h)
   const localEncoder=new MpeEncoder(packets=>{for(const[st,a,b]of packets)local.note(st,a,b);return true;},{configureChannel:true});
-  let mpeReady=false;
+  let mpeReady=false,keyboard=null,unguard=null;const keyNotes=new Map();let xyAxes=[];
   function load(){try{return parsePlayState(JSON.parse(localStorage.getItem(KEY)||'null'));}catch{return parsePlayState(null);}}
   function save(){try{localStorage.setItem(KEY,JSON.stringify(s));}catch{}}
   const control=()=>s.dest==='control',sendOut=m=>{if(output.ready)output.send(m).catch(e=>{if(!e.canceled)status(e.message,true);});};
@@ -29,35 +34,43 @@ export function createPlaySurface({el,status,local}){
   function ensureLocalMpe(){if(!control()&&slideBend()&&local.mpe&&!local.mpe()){local.setMpe(true);status('BEND: o MPE do motor foi ligado - cada dedo com o seu bend; o canal 1 segue como teclado.');}}
   // --- the notes: counted (two fingers on one note: one on, the last off), HOLD's latched; through MPE, a voice a finger
   function noteOn(id,n,v,pressure){
-    if(viaMpe()){if(!control())ensureLocalMpe();enc().begin(id,n,v,pressure,.5);mark();return;}
+    if(viaMpe()){if(!control())ensureLocalMpe();const encoder=enc();noteOwners.set(id,{encoder,note:n});encoder.begin(id,n,v,pressure,.5);mark();return;}
+    noteOwners.set(id,{output:control(),note:n});
     if((counts.get(n)||0)===0){if(control())sendOut([[0x90,n,v]]);else local.note(0x90,n,v);}
     counts.set(n,(counts.get(n)||0)+1);mark();
   }
   function noteOff(id,n){
-    if(viaMpe()){enc().end(id);mark();return;}
-    const c=(counts.get(n)||1)-1;if(c>0)counts.set(n,c);else{counts.delete(n);if(control())sendOut([[0x80,n,0]]);else local.note(0x80,n,0);}mark();
+    const owner=noteOwners.get(id);if(owner?.encoder){owner.encoder.end(id);noteOwners.delete(id);mark();return;}
+    if(owner?.note===n)noteOwners.delete(id);
+    const c=(counts.get(n)||1)-1;if(c>0)counts.set(n,c);else{counts.delete(n);if(owner?.output??control())sendOut([[0x80,n,0]]);else local.note(0x80,n,0);}mark();
   }
   const sounding=n=>counts.has(n)||[...encoder.voices.values(),...localEncoder.voices.values()].some(v=>v.note===n);
-  function releasePointers(){for(const[id,t]of[...touches])noteOff(id,t.note);touches.clear();}
+  function releasePointers(){keyboard?.release();for(const[id,t]of[...touches])noteOff(id,t.note);touches.clear();}
   function releaseAll(){releasePointers();for(const[id,n]of[...latched])noteOff(id,n);latched.clear();}
   // --- where a pointer is: a manual (or the grid) and its key
-  const whites=()=>whitesFor(keysBox?.clientWidth||root?.clientWidth||1280);
+  // Cache keybed geometry to avoid synchronous layout before note dispatch.
+  // Recalculate only when its position or size changes.
+  let box=null,boxWatch=null;
+  const forgetBox=()=>{box=null;};
+  function geom(){if(!box&&keysBox){const r=keysBox.getBoundingClientRect();box={left:r.left,top:r.top,width:r.width,height:r.height,cw:keysBox.clientWidth,ch:keysBox.clientHeight};}return box;}
+  const whites=()=>whitesFor(geom()?.cw||root?.clientWidth||1280);
   // (the manuals that fit: the width's limit, and at least ~120 px of height each - the phone lying down shows one)
-  function manualsShown(){const h=keysBox?.clientHeight||600;return s.layout==='grid'?1:Math.max(1,Math.min(s.manuals,maxManuals(root?.clientWidth||1280),Math.floor((h+6)/126)));}
+  function manualsShown(){const h=geom()?.ch||600;return s.layout==='grid'?1:Math.max(1,Math.min(s.manuals,maxManuals(root?.clientWidth||1280),Math.floor((h+6)/126)));}
   function hit(e){
-    const r=keysBox.getBoundingClientRect(),n=manualsShown(),gap=6,mh=(r.height-gap*(n-1))/n,y=e.clientY-r.top;
+    const r=geom(),n=manualsShown(),gap=6,mh=(r.height-gap*(n-1))/n,y=e.clientY-r.top;
     const m=n-1-Math.min(n-1,Math.max(0,Math.floor(y/(mh+gap)))),top=(n-1-m)*(mh+gap),fy=(y-top)/mh,fx=(e.clientX-r.left)/r.width;
     if(s.layout==='grid'){const col=Math.floor(fx*GRID_COLS),row=Math.floor(fy*GRID_ROWS);if(fx<0||fx>=1||fy<0||fy>=1)return null;
       return {note:gridPitch(row,col,{scale:s.scale,root:s.root,octave:s.gridOctave}),rel:fy*GRID_ROWS-row,manual:0};}
     const k=organNoteAt(s.octaves[m],fx,fy,whites());return k&&{...k,manual:m};
   }
-  function centres(manual){const r=keysBox.getBoundingClientRect();return organKeys(s.octaves[manual],whites()).map(k=>({x:r.left+(k.x+k.w/2)*r.width,note:k.note})).sort((a,b)=>a.x-b.x);}
+  function centres(manual){const r=geom();return organKeys(s.octaves[manual],whites()).map(k=>({x:r.left+(k.x+k.w/2)*r.width,note:k.note})).sort((a,b)=>a.x-b.x);}
   function down(e){
-    if(e.pointerType==='mouse'&&e.button!==0)return;const h=hit(e);if(!h||h.note<0)return;e.preventDefault();keysBox.setPointerCapture(e.pointerId);
+    if(e.pointerType==='mouse'&&e.button!==0)return;const h=hit(e);if(!h||h.note<0)return;e.preventDefault();
     if(hold&&!touches.size&&latched.size){for(const[id,n]of[...latched])noteOff(id,n);latched.clear();}
     const v=velocityAt(h.rel,s.vel),mpe=viaMpe();
     touches.set(e.pointerId,{note:h.note,velocity:v,manual:h.manual,start:mpe&&s.layout==='organ'?pitchCoordinate(e.clientX,centres(h.manual)):h.note});
     noteOn(e.pointerId,h.note,v,mpe?1-h.rel:0);
+    keysBox.setPointerCapture(e.pointerId);            // (after the note: the note first)
   }
   function move(e){
     const t=touches.get(e.pointerId);if(!t)return;e.preventDefault();
@@ -77,16 +90,17 @@ export function createPlaySurface({el,status,local}){
   }
   function mark(){if(!frame)frame=requestAnimationFrame(paintKeys);}
   function paintKeys(){frame=0;keysBox?.querySelectorAll('[data-note]').forEach(k=>k.classList.toggle('on',sounding(+k.dataset.note)));}
+  function keyItem(target,note,row,col){const id=`key:${row}:${col}`;return {target,row,col,press(){if(hold&&!touches.size&&latched.size){for(const[id,n]of [...latched])noteOff(id,n);latched.clear();}keyNotes.set(id,note);noteOn(id,note,100,.5);},release(){const n=keyNotes.get(id);if(n!==undefined){keyNotes.delete(id);noteOff(id,n);}}};}
   function renderKeys(){
-    keysBox.replaceChildren();const n=manualsShown();keysBox.dataset.layout=s.layout;keysBox.style.setProperty('--manuals',n);octBox.style.setProperty('--manuals',n);
+    keyboard?.dispose();forgetBox();keysBox.replaceChildren();const keyItems=[];const n=manualsShown();keysBox.dataset.layout=s.layout;keysBox.style.setProperty('--manuals',n);octBox.style.setProperty('--manuals',n);
     if(s.layout==='grid'){
-      const grid=el('div','play-grid');for(let row=0;row<GRID_ROWS;++row)for(let col=0;col<GRID_COLS;++col){const p=gridPitch(row,col,{scale:s.scale,root:s.root,octave:s.gridOctave}),pad=el('div',`play-pad${p>=0&&(p-s.root)%12===0?' root':''}`,p>=0?noteName(p):'');pad.dataset.note=p;grid.append(pad);}
+      const grid=el('div','play-grid');for(let row=0;row<GRID_ROWS;++row)for(let col=0;col<GRID_COLS;++col){const p=gridPitch(row,col,{scale:s.scale,root:s.root,octave:s.gridOctave}),pad=el('div',`play-pad${p>=0&&(p-s.root)%12===0?' root':''}`,p>=0?noteName(p):'');pad.dataset.note=p;if(p>=0){pad.setAttribute('aria-label',`Nota ${noteName(p)}`);keyItems.push(keyItem(pad,p,row,col));}grid.append(pad);}
       keysBox.append(grid);
     } else for(let m=n-1;m>=0;--m){
-      const man=el('div','play-manual');for(const k of organKeys(s.octaves[m],whites())){const key=el('div',k.black?'play-key black':'play-key',!k.black&&k.note%12===0?noteName(k.note):'');key.dataset.note=k.note;key.style.left=`${k.x*100}%`;key.style.width=`${k.w*100}%`;man.append(key);}
+      const man=el('div','play-manual');for(const k of organKeys(s.octaves[m],whites())){const key=el('div',k.black?'play-key black':'play-key',!k.black&&k.note%12===0?noteName(k.note):'');key.dataset.note=k.note;key.setAttribute('aria-label',`Manual ${m+1}, nota ${noteName(k.note)}`);keyItems.push(keyItem(key,k.note,n-1-m,k.note-(s.octaves[m]+2)*12));key.style.left=`${k.x*100}%`;key.style.width=`${k.w*100}%`;man.append(key);}
       keysBox.append(man);
     }
-    paintKeys();renderOctaves();
+    keyboard=installPerformanceKeys(keyItems);paintKeys();renderOctaves();
   }
   // --- the octaves: a strip beside the keys, a +/- pair a manual
   let octBox=null;
@@ -105,20 +119,21 @@ export function createPlaySurface({el,status,local}){
     paintMacros();
   }
   function applyXY(x,y){s.x=Math.min(1,Math.max(0,x));s.y=Math.min(1,Math.max(0,y));setMacros(mixSnapshots(s.snaps,s.set,s.x,s.y));paintXY();}
-  function paintMacros(){macroEls.forEach((m,i)=>{const v=macroValue(i);m.style.setProperty('--v',v);m.querySelector('output').textContent=`${v>0?'+':''}${Math.round(v*100)}`;});}
-  function paintSnaps(){snapEls.forEach((b,i)=>b.setAttribute('aria-pressed',String(!!((s.set>>i)&1))));}
-  function paintXY(){if(!xyBox)return;const dot=xyBox.querySelector('.play-xy-dot');dot.style.left=`${s.x*100}%`;dot.style.top=`${s.y*100}%`;xyBox.classList.toggle('armed',armed);xyBox.classList.toggle('looping',looping);
+  function paintMacros(){macroEls.forEach((m,i)=>{const v=macroValue(i);m.style.setProperty('--v',v);const strip=m.querySelector('.play-strip');strip.setAttribute('aria-valuenow',v);strip.setAttribute('aria-valuetext',`${Math.round(v*100)}%`);m.querySelector('output').textContent=`${v>0?'+':''}${Math.round(v*100)}`;});}
+  function paintSnaps(){snapEls.forEach((b,i)=>{const stored=!!((s.set>>i)&1),current=stored&&Math.abs(s.x-CORNERS[i][0])<.0001&&Math.abs(s.y-CORNERS[i][1])<.0001,p=snapshotPresentation({stored,current,capture:captureSnapshot,locked:s.lock,name:'ABCD'[i]});b.setAttribute('aria-pressed',String(stored));b.setAttribute('aria-label',p.label);b.dataset.current=String(current);b.querySelector('small').textContent=p.caption;});const capture=root?.querySelector('#play-capture');if(capture){capture.disabled=s.lock;capture.setAttribute('aria-pressed',String(captureSnapshot));capture.textContent=captureSnapshot?'ESCOLHA A–D':'GUARDAR A–D';}}
+  function paintXY(){if(!xyBox)return;xyAxes.forEach((axis,i)=>{axis.setAttribute('aria-valuenow',i?s.y:s.x);axis.setAttribute('aria-valuetext',`${Math.round((i?s.y:s.x)*100)}%`);axis.textContent=`${i?'Y':'X'} ${Math.round((i?s.y:s.x)*100)}%`;});const dot=xyBox.querySelector('.play-xy-dot');dot.style.left=`${s.x*100}%`;dot.style.top=`${s.y*100}%`;xyBox.classList.toggle('armed',armed);xyBox.classList.toggle('looping',looping);
     xyBox.querySelectorAll('.play-corner').forEach((c,i)=>c.classList.toggle('set',!!((s.set>>i)&1)));
     const path=xyBox.querySelector('polyline');path.setAttribute('points',s.loop.map(p=>`${(p.x*100).toFixed(1)},${(p.y*100).toFixed(1)}`).join(' '));
-    root?.querySelector('#play-rec')?.setAttribute('aria-pressed',String(armed));root?.querySelector('#play-loop')?.setAttribute('aria-pressed',String(looping));}
-  function store(i){if(s.lock)return;s.snaps[i]=[0,1,2,3].map(macroValue);s.set|=1<<i;s.x=CORNERS[i][0];s.y=CORNERS[i][1];save();paintSnaps();paintXY();}
+    const rec=root?.querySelector('#play-rec'),loop=root?.querySelector('#play-loop');rec?.setAttribute('aria-pressed',String(armed));if(rec)rec.disabled=s.lock;loop?.setAttribute('aria-pressed',String(looping));if(loop)loop.disabled=s.loop.length<2;
+    const feedback=motionPresentation({recording:!!recording,armed,gliding:!!glide,looping,hasLoop:s.loop.length>1,locked:s.lock}),label=xyBox.querySelector('.play-motion-label');xyBox.dataset.phase=feedback.phase;if(label&&label.textContent!==feedback.text)label.textContent=feedback.text;paintSnaps();}
+  function store(i){if(s.lock)return;s.snaps[i]=[0,1,2,3].map(macroValue);s.set|=1<<i;s.x=CORNERS[i][0];s.y=CORNERS[i][1];captureSnapshot=false;save();paintSnaps();paintXY();status(`Instantâneo ${'ABCD'[i]} guardado: quatro macros.`);}
   function recall(i){
     looping=false;const secs=GLIDES[s.glide];
     if(!secs){applyXY(...CORNERS[i]);save();return;}
     glide={from:[s.x,s.y],to:CORNERS[i],start:performance.now(),secs};tick();
   }
   function tick(){
-    if(glide){const t=Math.min(1,(performance.now()-glide.start)/1000/glide.secs),e=easeGlide(t);applyXY(glide.from[0]+(glide.to[0]-glide.from[0])*e,glide.from[1]+(glide.to[1]-glide.from[1])*e);if(t>=1){glide=null;save();}}
+    if(glide){const t=Math.min(1,(performance.now()-glide.start)/1000/glide.secs),e=easeGlide(t);applyXY(glide.from[0]+(glide.to[0]-glide.from[0])*e,glide.from[1]+(glide.to[1]-glide.from[1])*e);xyBox?.style.setProperty('--motion-progress',t);if(t>=1){glide=null;save();paintXY();}}
     else if(looping&&s.loop.length>1){const p=loopAt(s.loop,(performance.now()-loopStart)/1000);applyXY(p.x,p.y);}
     if((glide||looping)&&root)requestAnimationFrame(tick);
   }
@@ -137,7 +152,8 @@ export function createPlaySurface({el,status,local}){
     const sel=out.querySelector('select'),cur=sel.value||output.selected?.key||'',sig=JSON.stringify(output.destinations.map(d=>[d.key,d.name]));
     if(sel.dataset.sig!==sig){sel.replaceChildren(el('option','','Escolha o destino'));sel.options[0].value='';for(const d of output.destinations){const o=el('option','',d.name);o.value=d.key;sel.append(o);}sel.value=cur;sel.dataset.sig=sig;}
     out.querySelector('#play-mpe').setAttribute('aria-pressed',String(s.mpe));
-    out.querySelector('.play-link').textContent=output.ready?(s.mpe?`MPE · ${output.selected?.name}`:output.selected?.name):'sem saída';
+    out.querySelector('.play-link').textContent=output.ready?(s.mpe?`MPE · ${output.selected?.name}`:output.selected?.name):'Conectar MIDI';
+    out.classList.toggle('connected',output.ready);
   }
   async function connect(key){
     releaseAll();try{await output.select(key);mpeReady=s.mpe?(await encoder.setup())!==false:false;status(s.mpe?'MPE conectado. No plugin: MPE INPUT → LOWER ZONE; macros em CC 16–19 (MIDI LEARN uma vez).':'Saída conectada. Macros em CC 16–19, canal 1.');}
@@ -147,22 +163,31 @@ export function createPlaySurface({el,status,local}){
   // down: two manuals fit); PAINEL brings the whole strip back
   // (and keys: only the keys, the whole width)
   const panelMode=()=>s.panel??(window.innerHeight<520?'compact':'full');
-  function showPanel(){const m=panelMode(),b=head?.querySelector('#play-panel');root.classList.toggle('compact',m==='compact');root.classList.toggle('keys-only',m==='keys');if(b)b.textContent={full:'PAINEL: TUDO',compact:'PAINEL: MACROS',keys:'PAINEL: TECLAS'}[m];}
+  function dismissPanels(e){
+    if(e.type==='keydown'&&e.key!=='Escape')return;
+    head?.querySelectorAll('details[open]').forEach(d=>{if(e.type==='keydown'||!d.contains(e.target))d.open=false;});
+  }
+  function showPanel(){const m=panelMode(),b=head?.querySelector('#play-panel');root.classList.toggle('compact',m==='compact');root.classList.toggle('keys-only',m==='keys');if(b)b.value=m;}
   function applyCompact(){if(!root)return;showPanel();releasePointers();requestAnimationFrame(()=>{if(root){renderKeys();syncOptions();}});}
   function renderHead(){
     head=el('div','play-head');const here=el('button','play-toggle','ESTE APP'),ctl=el('button','play-toggle','SAÍDA MIDI');here.id='play-here';ctl.id='play-control';
     here.title='O som sai deste app (o motor do Usina aqui).';ctl.title='As notas e as macros saem por MIDI: o plugin no computador, outra instância, outro instrumento.';
     here.onclick=()=>{releaseAll();s.dest='here';save();ensureLocalMpe();paintHead();paintMacros();syncOptions();};
     ctl.onclick=async()=>{releaseAll();s.dest='control';save();paintHead();try{await output.connect();}catch(e){status(e.message,true);}paintHead();};
-    const out=el('div','play-output'),find=el('button','small-button','Saídas'),sel=el('select'),mpe=el('button','play-toggle','MPE'),close=el('button','small-button','Fechar'),link=el('span','play-link');mpe.id='play-mpe';
+    const out=el('details','play-output'),summary=el('summary','play-connection'),ports=el('div','play-port-panel'),find=el('button','small-button','Buscar saídas'),sel=el('select'),mpe=el('button','play-toggle','MPE'),close=el('button','small-button','Desconectar'),link=el('span','play-link');mpe.id='play-mpe';
     sel.setAttribute('aria-label','Destino MIDI');find.onclick=async()=>{try{await output.connect();status(output.destinations.length?'Escolha o destino.':'Nenhuma saída. Para o computador por USB: modo MIDI na configuração USB do Android.');}catch(e){status(e.message,true);}paintHead();};
+    releasePointerChoiceFocus(sel);
     sel.onchange=()=>{if(sel.value)connect(sel.value);};
     mpe.onclick=async()=>{releaseAll();s.mpe=!s.mpe;save();if(output.ready&&output.selected)await connect(output.selected.key);paintHead();};
     close.onclick=async()=>{releaseAll();try{await output.disconnect();}catch(e){status(e.message,true);}mpeReady=false;paintHead();};
-    out.append(find,sel,mpe,close,link);head.append(el('span','play-dest-label','TOCA EM'));
-    const panel=el('button','play-toggle','');panel.id='play-panel';panel.title='PAINEL: TUDO (instantâneos, XY, opções), MACROS (as macros ao lado do teclado) ou TECLAS (só o teclado)';
-    panel.onclick=()=>{const order=['full','compact','keys'];s.panel=order[(order.indexOf(panelMode())+1)%3];save();applyCompact();};
-    head.append(here,ctl,panel,out);return head;
+    summary.append(link);ports.append(el('span','play-group-label','SAÍDA MIDI'),sel,find,mpe,close);out.append(summary,ports);
+    const destination=el('div','play-destination');destination.setAttribute('role','group');destination.setAttribute('aria-label','Destino das notas');destination.append(el('span','play-dest-label','TOCA EM'),here,ctl);
+    const panel=el('select','play-panel-select');panel.id='play-panel';panel.setAttribute('aria-label','Painel de performance');
+    for(const [value,text]of[['full','Tudo'],['compact','Macros'],['keys','Teclas']]){const option=el('option','',text);option.value=value;panel.append(option);}
+    panel.onchange=()=>{s.panel=panel.value;save();applyCompact();};
+    releasePointerChoiceFocus(panel);
+    const panelLabel=el('label','play-panel-label','PAINEL');panelLabel.append(panel);
+    head.append(destination,out,panelLabel);return head;
   }
   // --- the panel
   function render(target){
@@ -170,25 +195,28 @@ export function createPlaySurface({el,status,local}){
     root.append(renderHead());
     const perf=el('div','play-perf'),macros=el('div','play-macros');macroEls.length=0;snapEls.length=0;
     for(let i=0;i<4;++i){const m=el('div','play-macro'),strip=el('div','play-strip'),fill=el('span','play-fill');strip.append(fill);m.append(el('label','',`MACRO ${i+1}`),strip,el('output','','0'));
+      keyboardSlider(strip,{name:`MACRO ${i+1}`,get:()=>macroValue(i),set:v=>{const vals=[0,1,2,3].map(macroValue);vals[i]=v;glide=null;looping=false;setMacros(vals);}});
       const set=e=>{const r=strip.getBoundingClientRect(),v=Math.min(1,Math.max(-1,1-2*(e.clientY-r.top)/r.height)),vals=[0,1,2,3].map(macroValue);vals[i]=v;glide=null;looping=false;setMacros(vals);};
       strip.onpointerdown=e=>{e.preventDefault();strip.setPointerCapture(e.pointerId);set(e);};strip.onpointermove=e=>{if(strip.hasPointerCapture(e.pointerId))set(e);};
       strip.ondblclick=()=>{const vals=[0,1,2,3].map(macroValue);vals[i]=0;setMacros(vals);};
       macroEls.push(m);macros.append(m);}
-    const snaps=el('div','play-snaps');['A','B','C','D'].forEach((name,i)=>{const b=el('button','play-snap',name);b.title=`${name}: toque vai até ele; vazio, guarda. Toque longo ou clique-direito: guarda de novo.`;let timer=0,long=false;
-      b.onpointerdown=()=>{long=false;timer=setTimeout(()=>{long=true;store(i);},550);};b.onpointerup=b.onpointercancel=()=>clearTimeout(timer);
-      b.oncontextmenu=e=>{e.preventDefault();store(i);};b.onclick=()=>{if(long)return;if((s.set>>i)&1)recall(i);else store(i);};snapEls.push(b);snaps.append(b);});
+    const snaps=el('div','play-snaps');['A','B','C','D'].forEach((name,i)=>{const b=el('button','play-snap');b.append(el('span','',name),el('small'));b.title=`${name}: toque recupera; vazio, guarda. Segure para substituir.`;
+      snapshotCancels.push(installSnapshotPress({target:b,store:()=>store(i),recall:()=>recall(i),stored:()=>!!((s.set>>i)&1),capturing:()=>captureSnapshot}));snapEls.push(b);snaps.append(b);});
     const glideSel=el('select');glideSel.setAttribute('aria-label','GLIDE');GLIDES.forEach((g,i)=>{const o=el('option','',g?`${g} s`:'0');o.value=i;glideSel.append(o);});glideSel.value=s.glide;glideSel.onchange=()=>{s.glide=+glideSel.value;save();};
-    const glideLabel=el('label','play-glide','GLIDE ');glideLabel.append(glideSel);snaps.append(glideLabel);
+    const glideLabel=el('label','play-glide','TRANSIÇÃO');glideLabel.append(glideSel);
+    releasePointerChoiceFocus(glideSel);
     xyBox=el('div','play-xy');const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('preserveAspectRatio','none');svg.append(document.createElementNS('http://www.w3.org/2000/svg','polyline'));
-    xyBox.append(svg,el('span','play-xy-dot'));['A','B','C','D'].forEach((n,i)=>{const c=el('span',`play-corner c${i}`,n);xyBox.append(c);});
+    const motionLabel=el('span','play-motion-label');motionLabel.setAttribute('role','status');xyBox.append(svg,el('span','play-xy-dot'),motionLabel,el('span','play-motion-progress'));['A','B','C','D'].forEach((n,i)=>{const c=el('span',`play-corner c${i}`,n);xyBox.append(c);});
     xyBox.onpointerdown=e=>xyPointer(e,'down');xyBox.onpointermove=e=>{if(xyBox.hasPointerCapture(e.pointerId))xyPointer(e,'move');};xyBox.onpointerup=xyBox.onpointercancel=e=>xyPointer(e,'up');
+    const axes=el('div','play-xy-axes');xyAxes=[];
+    ['X','Y'].forEach((name,i)=>{const axis=el('div','play-xy-axis',name);keyboardSlider(axis,{name:`XY ${name}`,min:0,max:1,get:()=>i?s.y:s.x,set:v=>{glide=null;looping=false;applyXY(i?s.x:v,i?v:s.y);save();}});axis.title=`XY ${name}: setas ajustam; Shift para ajuste fino; Home e End para os limites.`;xyAxes.push(axis);axes.append(axis);});
     const xyTools=el('div','play-xy-tools'),rec=el('button','play-toggle','REC'),loopB=el('button','play-toggle','LOOP');rec.id='play-rec';loopB.id='play-loop';
     rec.onclick=()=>{if(s.lock)return;armed=!armed;paintXY();};loopB.onclick=()=>{if(s.loop.length<2)return;looping=!looping;if(looping){glide=null;loopStart=performance.now();tick();}paintXY();};xyTools.append(rec,loopB);
     const opts=el('div','play-opts'),holdB=el('button','play-toggle','HOLD'),lockB=el('button','play-toggle','LOCK'),organB=el('button','play-toggle','ORGAN'),gridB=el('button','play-toggle','GRID'),velB=el('button','play-toggle','VEL'),bendB=el('button','play-toggle','BEND');bendB.title='BEND: deslizar entorta a nota do dedo (uma voz). Desligado: LEGATO, cada tecla uma nota.';
     const sync=()=>{holdB.setAttribute('aria-pressed',String(hold));lockB.setAttribute('aria-pressed',String(s.lock));organB.setAttribute('aria-pressed',String(s.layout==='organ'));gridB.setAttribute('aria-pressed',String(s.layout==='grid'));velB.setAttribute('aria-pressed',String(s.vel));bendB.setAttribute('aria-pressed',String(slideBend()));
       manualRow.hidden=s.layout==='grid';scaleRow.hidden=s.layout!=='grid';manualRow.querySelectorAll('button').forEach((b,i)=>{b.setAttribute('aria-pressed',String(manualsShown()===i+1));b.hidden=i+1>maxManuals(root?.clientWidth||1280);});};
     holdB.onclick=()=>{hold=!hold;if(!hold){for(const[id,n]of[...latched])noteOff(id,n);latched.clear();}sync();};
-    lockB.onclick=()=>{s.lock=!s.lock;if(s.lock)armed=false;save();sync();paintXY();};
+    lockB.onclick=()=>{s.lock=!s.lock;if(s.lock){armed=false;captureSnapshot=false;}save();sync();paintXY();};
     organB.onclick=()=>{releasePointers();s.layout='organ';save();sync();renderKeys();};gridB.onclick=()=>{releasePointers();s.layout='grid';save();sync();renderKeys();};
     velB.onclick=()=>{s.vel=!s.vel;save();sync();};
     bendB.onclick=()=>{releaseAll();s.slide=slideBend()?'legato':'bend';save();ensureLocalMpe();sync();};
@@ -196,14 +224,22 @@ export function createPlaySurface({el,status,local}){
     const scaleRow=el('div','play-row'),scale=el('select'),rootSel=el('select');scale.setAttribute('aria-label','Escala');rootSel.setAttribute('aria-label','Tônica');
     cabineScales.forEach(([name],i)=>{const o=el('option','',name);o.value=i;scale.append(o);});['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].forEach((n,i)=>{const o=el('option','',n);o.value=i;rootSel.append(o);});
     scale.value=s.scale;rootSel.value=s.root;scale.onchange=()=>{releasePointers();s.scale=+scale.value;save();renderKeys();};rootSel.onchange=()=>{releasePointers();s.root=+rootSel.value;save();renderKeys();};scaleRow.append(scale,rootSel);
-    opts.append(holdB,lockB,organB,gridB,velB,bendB,manualRow,scaleRow);
-    perf.append(macros,snaps,xyBox,xyTools,opts);root.append(perf);
-    const keysWrap=el('div','play-keys-wrap');octBox=el('div','play-octs');keysBox=el('div','play-keys');keysBox.setAttribute('aria-label','Teclado PLAY');
+    releasePointerChoiceFocus(scale);releasePointerChoiceFocus(rootSel);
+    opts.append(lockB,organB,gridB,velB,bendB,manualRow,scaleRow,el('p','play-key-help','Teclado: setas escolhem a nota; Espaço ou Enter toca até soltar. Escape solta as notas.'));
+    const settings=el('details','play-settings'),settingsTitle=el('summary','play-toggle','TOQUE');settings.append(settingsTitle,opts);head.append(holdB,settings);
+    const morph=el('section','play-morph'),morphTitle=el('span','play-group-label','INSTANTÂNEOS · MACROS');
+    const morphFoot=el('div','play-morph-foot');morphFoot.append(glideLabel,axes,xyTools);
+    const bank=el('div','play-macro-bank'),capture=el('button','play-toggle play-capture','GUARDAR A–D');capture.id='play-capture';capture.title='Guarde as posições das quatro macros em A, B, C ou D.';capture.onclick=()=>{captureSnapshot=!captureSnapshot;paintSnaps();};bank.append(macros,capture);
+    morph.append(morphTitle,snaps,xyBox,morphFoot);perf.append(bank,morph);root.append(perf);
+    const keysWrap=el('div','play-keys-wrap');octBox=el('div','play-octs');keysBox=el('div','play-keys');keysBox.setAttribute('role','group');keysBox.setAttribute('aria-label','Teclado PLAY. Setas navegam; Espaço ou Enter toca até soltar. Escape solta as notas.');
     keysBox.onpointerdown=down;keysBox.onpointermove=move;keysBox.onpointerup=keysBox.onpointercancel=keysBox.onlostpointercapture=up;
+    boxWatch?.disconnect();boxWatch=typeof ResizeObserver==='function'?new ResizeObserver(forgetBox):null;boxWatch?.observe(keysBox);
+    addEventListener('scroll',forgetBox,true);addEventListener('resize',forgetBox);
     keysWrap.append(octBox,keysBox);root.append(keysWrap);showPanel();
-    syncOptions=sync;sync();renderKeys();paintMacros();paintSnaps();paintXY();paintHead();
+    root.addEventListener('pointerdown',dismissPanels,true);root.addEventListener('keydown',dismissPanels);
+    unguard=installReleaseGuard(releaseAll);syncOptions=sync;sync();renderKeys();paintMacros();paintSnaps();paintXY();paintHead();
   }
-  function leave(){releasePointers();looping=false;glide=null;armed=false;root?.classList.remove('play-view');root=null;keysBox=null;xyBox=null;head=null;}
+  function leave(){releaseAll();keyboard?.dispose();keyboard=null;unguard?.();unguard=null;xyAxes=[];boxWatch?.disconnect();boxWatch=null;box=null;removeEventListener('scroll',forgetBox,true);removeEventListener('resize',forgetBox);releasePointers();snapshotCancels.splice(0).forEach(cancel=>cancel());captureSnapshot=false;recording=null;gestureOn=false;looping=false;glide=null;armed=false;root?.removeEventListener('pointerdown',dismissPanels,true);root?.removeEventListener('keydown',dismissPanels);root?.classList.remove('play-view','compact','keys-only');root=null;keysBox=null;xyBox=null;head=null;}
   return {render,leave,releaseAll,resize(){if(root)applyCompact();},refresh(){paintMacros();},
     stopOutput:async()=>{releaseAll();try{await output.panic();}catch{}}};
 }

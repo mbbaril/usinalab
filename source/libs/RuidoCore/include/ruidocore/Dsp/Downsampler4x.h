@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,17 +29,7 @@
 
 namespace ruidocore {
 
-// 4x decimation via a short (4-tap, effectively 8-tap once the
-// overlapping head/tail windows are accounted for) linear-phase FIR
-// lowpass - faithfully following Mutable Instruments' own `Downsampler`
-// (plaits/dsp/downsampler/4x_downsampler.h, MIT-licensed,
-// github.com/pichenettes/eurorack, read for this library's own synth-
-// engine research, see docs/SYNTH_ENGINE_RESEARCH.md), including its
-// exact FIR coefficients (`lut_4x_downsampler_fir`, plaits/resources.cc)
-// - the user asked explicitly to stay as faithful as possible to the
-// Mutable modules rather than substitute a different filter design
-// (2026-08-27, "prefiro fazer tudo o mais fiel possivel aos modulos da
-// mutable" / "gosto do fir").
+// Fourfold decimation with short FIR head/tail accumulation.
 //
 // Why the head/tail split: a 4-tap FIR applied at 4x the output rate
 // spans energy across TWO output periods, not one - each oversampled
@@ -77,4 +65,4 @@ private:
     float tail = 0.0f;
 };
 
-} // namespace ruidocore
+} //

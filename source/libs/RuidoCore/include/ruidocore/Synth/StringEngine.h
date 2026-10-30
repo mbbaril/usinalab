@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -30,7 +28,7 @@
 #pragma once
 
 #include "../Dsp/DecayEnvelope.h"
-#include "../Dsp/PlaitsString.h"
+#include "../Dsp/CombString.h"
 #include "../Dsp/Svf.h"
 #include "Engine.h"
 
@@ -41,34 +39,20 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `StringEngine`+
-// `StringVoice` (plaits/dsp/engine/string_engine.h/.cc +
-// plaits/dsp/physical_modelling/string_voice.h/.cc, MIT licensed,
-// github.com/pichenettes/eurorack, downloaded and read directly - "nao
-// simplifique nada"/"quero fidelidade total", 2026-08-27) - "Extended
-// Karplus-Strong, with all the niceties from Rings" (real Plaits' own
-// doc comment), driving Dsp/PlaitsString.h's waveguide.
+// StringEngine DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
 // Knob mapping confirmed against the manual and the real source:
 // harmonics -> `structure` (fed STRAIGHT into a nonlinearity-amount
 // formula, not smoothed the way ModalEngine's own harmonics is), timbre
 // -> brightness (squared before use - `parameters.timbre *
-// parameters.timbre`, real Plaits' own exact expression, not this
+// parameters.timbre`, reference exact expression, not this
 // port's invention), morph -> damping.
 //
-// Real Plaits' own StringEngine renders THREE independent StringVoice
-// instances with its own internal round-robin voice-stealing
-// (`kNumStrings=3`, `active_string_`) - deliberately NOT replicated
-// here: this library's own `PluginProcessor` already gives every part a
-// round-robin voice POOL at a higher level (`kVoicesPerPart`), so
-// stacking a SECOND independent round-robin inside the engine itself
-// would just be redundant polyphony management, not a fidelity loss on
-// the actual STRING ALGORITHM - each `StringEngine` instance here is
-// one single string voice, matching real Plaits' own `StringVoice`
-// exactly; RuidoCore's outer voice pool provides the "3+ voices" real
-// Plaits achieves internally.
+// One internal string voice per engine instance; the host owns polyphony and
+// voice stealing. Aux contains excitation rather than an independent string voice.
 //
-// Deliberately NOT ported: Plaits' own "sustain mode" (same scope-cut
+// NOT ported: reference "sustain mode" (same scope-cut
 // as every engine in this library). Already self-enveloping (the
 // waveguide's own damping-filter decay IS the amplitude envelope, same
 // "internal LPG disabled" reasoning as every other physical-modelling/
@@ -103,21 +87,15 @@ public:
         if (triggerNow)
             decayEnvelope.trigger();
 
-        // Internal punch envelope (closing the gap - see
-        // BassDrumEngine.h/ModalEngine.h's own comments for the full
-        // reasoning; same block-rate cadence as ModalEngine since
-        // PlaitsString::process() below also only takes one brightness/
-        // damping/nonLinearity value for the whole block).
+        // Update the shared decay envelope at control-block cadence and apply enabled
+        // parameter depths to the engine controls.
         const float shortDecay = (200.0f * 24.0f / static_cast<float>(sampleRateHz)) *
                                   semitonesToRatio(-96.0f * parameters.decay);
         decayEnvelope.process(shortDecay * 2.0f);
         const float envValue = decayEnvelope.value();
         const float modulatedNote =
             std::clamp(parameters.note + parameters.pitchEnvAmount * envValue * envValue * 48.0f, 0.0f, 127.0f);
-        // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-        // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-        // positive amount, easily masked by this engine's own natural decay;
-        // negative already reaches full silence at max amount so stays as-is).
+        // Envelope depth is bipolar; positive depth uses the extended gain range.
         const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                         ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                         : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
@@ -159,37 +137,14 @@ public:
             std::fill(temp.begin(), temp.begin() + static_cast<long>(numSamples), 0.0f);
         }
 
-        // Real bug (2026-08-28, "honestamente accents nao aparecem
-        // funcionar" - same gap as ModalEngine's own, see its identical
-        // comment): outputGain never multiplied by parameters.accent.
-        // Computed here (moved up, 2026-09-01) so BOTH aux and out use
-        // the exact same scaling - see the two bugs fixed just below.
+        // Apply outputGain to the resonator output for consistent accent and level control.
         const float outputGain = std::clamp(parameters.accent, 0.0f, 1.0f) * postProcessing.outGain * levelEnvGain;
 
         for (size_t i = 0; i < numSamples; ++i) {
             temp[i] = excitationFilter.process(temp[i], Svf::Mode::LowPass);
             if (aux) {
-                // Two real bugs fixed 2026-09-01 (user report: "o
-                // string so solta cliques" - root-caused via a full
-                // engine/aux audit, see reference_engine_envamount_hook_gap
-                // memory for the fuller story):
-                // 1. `aux[i] += temp[i]` ACCUMULATED onto a stale,
-                //    thread_local scratch buffer shared across every
-                //    voice/part's own render() call in PluginProcessor
-                //    (never cleared between voices) - real cross-voice/
-                //    cross-part bleed the moment Aux Mix was raised
-                //    above 0, unlike every OTHER engine's own aux
-                //    write (`aux[i] = ...`, unconditional overwrite).
-                //    Now assigns, matching that same convention.
-                // 2. aux was written completely UNSCALED - the same
-                //    outputGain (accent/level/outGain) that `out` gets
-                //    multiplied by below never touched aux at all, so
-                //    the raw excitation/pluck "click" played at a
-                //    fixed, unattenuated level regardless of how quiet
-                //    the actual resonated tone (out) was - exactly what
-                //    would make a String part sound like "only clicks"
-                //    once Aux Mix leaned toward aux, or once bug 1's
-                //    bleed let unscaled click content reach the mix.
+                // Overwrite aux scratch output rather than accumulating stale samples across voices.
+                // Apply outputGain to aux as well as out so accent and level affect both paths.
                 aux[i] = temp[i] * outputGain;
             }
         }
@@ -231,7 +186,7 @@ private:
     }
 
     double sampleRateHz = 48000.0;
-    PlaitsString string_;
+    CombString string_;
     Svf excitationFilter;
     DecayEnvelope decayEnvelope;
     size_t remainingNoiseSamples = 0;
@@ -241,4 +196,4 @@ private:
     std::uint32_t rngState = 0x85ebca6bu;
 };
 
-} // namespace ruidocore
+} //

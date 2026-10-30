@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The sequencer's player (src/seq/SeqPlayer.h), measured (rule 25), driven as a host drives it: blocks of random sizes,
-// the host's beat position advancing with them (and looping, jumping, stopping):
-//   TIMING    sixteenths at 120 BPM, 48 kHz: every note-on on its exact sample (k x 6000), its note-off half a step later
-//   PAIRS     every note-on has its note-off - through stops, loops and jumps
-//   LOOP      the host looping one bar: every pass plays the same notes from the bar's first step
-//   JUMP      started in the middle (beat 2): the first note is step 8's
-//   RATCHET   3 on a step: three notes, a third of a step apart
-//   PROB      probability 0: never; 0.5: about half
-//   EDIT      a lane changed while it plays: heard from the next block, its cursor and timing undisturbed
-//   LANES     a modulation lane's value = its step's value (velocity / 127), held through the steps that are off
-//   REAL-TIME no allocation and no free while it plays and is edited (counted; a Release build: MSVC's debug iterators
-//             allocate on every container move)
+// Validate sample-accurate sequencing with variable block sizes and host transport
+// loops, seeks and stops. Check event pairing, timing, lane values and allocations.
 #include "seq/SeqPlayer.h"
 #include "seq/SeqCommands.h"
 #include "../web/sequence-wire.h"
@@ -50,12 +40,12 @@ void check(bool ok, const std::string& what, double got, const char* want)
 }
 
 struct Note {
-    long long at;                                        // absolute sample
+    long long at;                                        // Absolute sample
     bool on;
     int note, velocity;
 };
 
-// a host: blocks of random sizes, the position (ppq) advancing at bpm; loopBeats > 0: the position loops over that many
+// A host: blocks of random sizes, the position (ppq) advancing at bpm; loopBeats > 0: the position loops over that many
 // beats; startBeat: where the transport starts
 struct Host {
     double fs = 48000.0, bpm = 120.0, ppq = 0.0, loopBeats = 0.0;
@@ -108,7 +98,7 @@ bool paired(const std::vector<Note>& v)
         if (kv.second != 0) return false;
     return true;
 }
-} // namespace
+} // Namespace
 
 int main(int argc,char** argv)
 {
@@ -130,7 +120,7 @@ int main(int argc,char** argv)
         p.setPatternNow(notes16());
         Host h;
         h.run(p, 4.0);
-        h.run(p, 0.1, false);                            // (stopped: every note ends)
+        h.run(p, 0.1, false);                            // Stopped: every note ends
         int wrong = 0, ons = 0;
         long long expect = 0;
         for (const auto& n : h.got)
@@ -202,9 +192,8 @@ int main(int argc,char** argv)
                   pr == 0.0f ? "0" : "0.5 +- 0.1");
         }
     }
-    {   // DRUMS (22/10): the four drum lanes play their base notes with their steps' strength, alongside the note lane;
-        // a muted lane is silent
-        auto pat = notes16(1);                           // (the note lane: step 0 only, note 48)
+    {   // Drum lanes play base notes at step velocity alongside the note lane; mute suppresses events.
+        auto pat = notes16(1);                           // The note lane: step 0 only, note 48
         auto& d2 = pat.parts[(size_t)(kFirstDrumLane + 1)];
         d2.steps[0].enabled = true;
         d2.steps[0].velocity = 40;
@@ -217,7 +206,7 @@ int main(int argc,char** argv)
         p.setPatternNow(pat);
         p.setMuted(kFirstDrumLane + 3, true);
         Host h;
-        h.run(p, 1.9);                                   // (just under a bar: each step once)
+        h.run(p, 1.9);                                   // Just under a bar: each step once
         h.run(p, 0.1, false);
         int drumWeak = 0, drumStrong = 0, melody = 0, muted = 0;
         for (const auto& n : h.got)
@@ -237,14 +226,14 @@ int main(int argc,char** argv)
         p.prepare(48000.0);
         p.setPatternNow(notes16());
         Host h;
-        h.run(p, 1.0);                                   // (warmed: the buffers have their sizes)
+        h.run(p, 1.0);                                   // Warmed: the buffers have their sizes
         auto lane = notes16().parts[kNoteLane];
         for (auto& s : lane.steps) s.explicitNote = 72;
-        p.submitLane(kNoteLane, lane);                   // (message thread: the copy made here)
+        p.submitLane(kNoteLane, lane);                   // Message thread: the copy made here
         const size_t before = h.got.size();
-        h.got.reserve(before + 10000);                   // (the test host's own record: grown before the count)
+        h.got.reserve(before + 10000);                   // The test host's own record: grown before the count
         const long a0 = allocations, f0 = frees;
-        h.run(p, 1.0);                                   // (the audio thread: takes it, plays it)
+        h.run(p, 1.0);                                   // The audio thread: takes it, plays it
         const long a1 = allocations, f1 = frees;
         int newNotes = 0, wrongTime = 0;
         for (size_t i = before; i < h.got.size(); ++i)
@@ -262,7 +251,7 @@ int main(int argc,char** argv)
     }
     {   // LANES
         auto pat = defaultPattern();
-        auto& m = pat.parts[1];                          // (SEQ 1)
+        auto& m = pat.parts[1];                          // SEQ 1
         m.steps[0].enabled = true;
         m.steps[0].velocity = 127;
         m.steps[4].enabled = true;
@@ -271,11 +260,11 @@ int main(int argc,char** argv)
         p.prepare(48000.0);
         p.setPatternNow(pat);
         Host h;
-        h.run(p, 0.05);                                  // (step 0 fired; a step is 0.125 s)
+        h.run(p, 0.05);                                  // Step 0 fired; a step is 0.125 s
         const float v0 = p.laneValue(0);
-        h.run(p, 0.40);                                  // (to 0.45 s: steps 1..3 off, held)
+        h.run(p, 0.40);                                  // To 0.45 s: steps 1..3 off, held
         const float v1 = p.laneValue(0);
-        h.run(p, 0.10);                                  // (to 0.55 s: step 4, at 0.5 s)
+        h.run(p, 0.10);                                  // To 0.55 s: step 4, at 0.5 s
         const float v2 = p.laneValue(0);
         check(v0 == 1.0f && v1 == 1.0f && std::fabs(v2 - 32.0f / 127.0f) < 1e-6f, "LANES the step's value, held through the off steps", v2, "0.252");
     }
@@ -288,8 +277,8 @@ int main(int argc,char** argv)
         chords[0].count=16;for(int i=0;i<16;++i){chords[0].notes[(size_t)i]=48+i;chords[0].durations[(size_t)i]=64;}
         p.submitLane(0,pattern.parts[0],&chords);Event events[256];Transport t;t.playing=true;t.bpm=120;t.ppqValid=false;
         const long alloc=allocations,freed=frees;const int n=p.process(128,t,events,256);
-        // (MSVC's Debug iterator checking allocates a container proxy when the lane's vectors are swapped in -
-        // exchangePart: measured 27/10, Debug 16 allocations, Release none. Not the plugin's: measured in Release)
+        // Debug iterator checking allocates vector proxies during exchangePart.
+        // Measure allocation-free rendering in Release builds.
 #if defined(_MSC_VER) && defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL > 0
         const bool rt=true;std::printf("     (render allocations not measurable with MSVC's iterator debugging: see the Release run)\n");
 #else

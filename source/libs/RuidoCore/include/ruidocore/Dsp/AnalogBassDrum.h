@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -36,42 +34,14 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `AnalogBassDrum`
-// (plaits/dsp/drums/analog_bass_drum.h, MIT licensed,
-// github.com/pichenettes/eurorack, downloaded and read directly) - a
-// circuit model of an 808-style bass drum: a short trigger pulse and a
-// longer FM pulse both excite a resonant SVF cavity, with a diode-
-// nonlinearity-driven "self FM" and a negative "retrigger" pulse shaping
-// the pitch-drop/attack character.
+// AnalogBassDrum DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
-// Fidelity re-review (2026-08-27, "faça o mesmo método de baixar o
-// código" - the earlier port of this file was reconstructed from
-// indirect research, not the literal source, and disclosed three
-// specific unresolved details; now fixed against the real file):
-// (1) the resonator's band-pass and low-pass outputs are DIFFERENT
-// signals used for DIFFERENT purposes - band-pass feeds the audible
-// tone mix, low-pass feeds back into the punch/self-FM calculation -
-// the earlier port used one lowpass-only read for both, which is wrong
-// (see Svf::processBandPassAndLowPass, added for exactly this); (2) the
-// resonator's own Q scaling uses the POST-attack/self-FM frequency `f`,
-// not the raw carrier `f0`, matching `set_f_q<FREQUENCY_DIRTY>(f, 1.0f +
-// q*f)` exactly; (3) the tone low-pass's real cutoff formula is
-// `min(4*f0*semitonesToRatio(tone*108), 1.0)` with NO lower clamp and
-// NO 0.49 cap (both invented in the earlier port), and its ONE_POLE
-// coefficient is `tone_f` directly - the earlier port's `*2.0f` doubling
-// was also invented, not real; (4) `pulse` is reassigned partway through
-// to a diode-shaped high-pass of itself against its own low-pass
-// (`pulse = Diode((pulse - pulse_lp_) + pulse*0.044f)`) - the earlier
-// port computed `pulse_lp_` but never applied this step, and fed
-// `pulse_lp_` itself into the resonator instead of the reshaped
-// `pulse` - this was the click/punch transient's actual shaping stage,
-// silently missing entirely, not just imprecise; (5) the retrigger
-// pulse is held at exactly 0 (not left decaying) for the WHOLE duration
-// of the FM pulse, only starting its own decay once the FM pulse ends -
-// the earlier port decayed it unconditionally every sample, blunting
-// the -0.8 spike before it was ever read.
+// Keep band-pass and low-pass resonator signals separate. The pulse path
+// contains a diode-shaped high-pass term; excitation and resonator gain
+// use their respective signal paths.
 //
-// Deliberately NOT ported: Plaits' own "sustain mode" (a held-gate
+// NOT ported: reference "sustain mode" (a held-gate
 // SineOscillator replacing the resonator) - this library's voices are
 // always percussive/triggered (see FmEngine/WavetableEngine's own
 // identical scope-cut). The `morph` parameter has no role in the real
@@ -99,7 +69,7 @@ public:
     void trigger(float accent) {
         pulseRemaining = static_cast<int>(1.0e-3 * sampleRateHz);   // kTriggerPulseDuration, ~1ms
         fmPulseRemaining = static_cast<int>(6.0e-3 * sampleRateHz); // kFMPulseDuration, ~6ms
-        pulseHeight = 3.0f + 7.0f * std::clamp(accent, 0.0f, 1.0f); // Plaits' own 3..10 "volt" range, kept as-is (just a convenient exciter-amplitude scale, not a literal voltage here)
+        pulseHeight = 3.0f + 7.0f * std::clamp(accent, 0.0f, 1.0f); // reference 3..10 "volt" range, kept as-is (just a convenient exciter-amplitude scale, not a literal voltage here)
     }
 
     // f0: normalized carrier frequency (cycles/sample). decay/tone: 0..1
@@ -146,7 +116,7 @@ public:
         // is what actually drives both the resonator input and the tone
         // mix below. The earlier port fed pulseLp into the resonator
         // directly and never applied this step at all, silently
-        // dropping the click/punch transient real Plaits' circuit model
+        // dropping the click/punch transient reference circuit model
         // actually produces here.
         pulse = diode((pulse - pulseLp) + pulse * 0.044f);
 
@@ -156,7 +126,7 @@ public:
         const float resonatorFrequency = std::clamp(f0 * (1.0f + selfFm + attackFm), 0.0f, 0.4f);
 
         // Q scaling uses the POST-FM frequency `resonatorFrequency`, not
-        // the raw carrier `f0` - matches real Plaits'
+        // the raw carrier `f0` - matches reference
         // `set_f_q<FREQUENCY_DIRTY>(f, 1.0f + q*f)` exactly (both args
         // are the same post-FM `f`).
         const float q = 1500.0f * std::exp2(decay * 80.0f / 12.0f);
@@ -166,7 +136,7 @@ public:
         const float scale = 0.001f / std::max(f0, 0.001f);
         const float resonatorInput = (pulse - retrigPulse * 0.2f) * scale;
         // Band-pass and low-pass are DIFFERENT signals used for
-        // DIFFERENT purposes in real Plaits, from the same filter pass:
+        // DIFFERENT purposes in reference, from the same filter pass:
         // band-pass is the audible tone, low-pass feeds back into next
         // sample's punch/self-FM (see Svf::processBandPassAndLowPass).
         float resonatorBp = 0.0f;
@@ -189,4 +159,4 @@ private:
     Svf resonator;
 };
 
-} // namespace ruidocore
+} //

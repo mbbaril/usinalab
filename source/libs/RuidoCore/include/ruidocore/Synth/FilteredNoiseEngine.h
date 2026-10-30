@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -41,16 +39,10 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `NoiseEngine`
-// (plaits/dsp/engine/noise_engine.h/.cc, "Clocked noise processed by a
-// multimode filter", MIT licensed, github.com/pichenettes/eurorack,
-// downloaded and read directly). Two ClockedNoise sources (one at the
-// carrier pitch, one detuned by the Harmonics-derived interval) feed a
-// multimode LP-to-HP filter (out) and two parallel band-pass filters
-// (aux) - a percussive, pitched "filtered noise" character rather than
-// plain static, distinct from AnalogHiHat's own noise use.
+// FilteredNoiseEngine DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 //
-// Trigger-vs-CV semantics: real Plaits' `clock_lowest_note` and
+// Trigger-vs-CV semantics: reference `clock_lowest_note` and
 // `SwarmEngine`'s own `burst_mode` (see SwarmEngine.h) both branch on
 // whether a CV cable is physically PATCHED into the trigger input -
 // this library has no such concept (every voice is always internally
@@ -60,20 +52,20 @@ namespace ruidocore {
 // something with no analogue here.
 //
 // Percussive envelope: like FmEngine/WavetableEngine, this is a
-// continuous/sustained algorithm in real Plaits (used there in
+// continuous/sustained algorithm in reference (used there in
 // CV-gated sustain contexts) - shares the same LpgEnvelope+
 // LowPassGate+DecayEnvelope machinery, driven by `decay`, block-rate
-// updated (kControlBlockSize=24, matching real Plaits' own
+// updated (kControlBlockSize=24, matching reference
 // Voice::Render() control-block cadence).
 //
-// Parameter mapping - identical to real Plaits' own (confirmed from
+// Parameter mapping - identical to reference (confirmed from
 // source, matches the manual's own "Harmonics: crossfade between LP,
 // BP, HP; Timbre: clock frequency; Morph: resonance" description):
-//   harmonics -> LP/BP/HP filter mode crossfade
-//   timbre    -> clocked-noise frequency
-//   morph     -> filter resonance (Q)
-//   decay     -> LPG gain/brightness decay time
-//   accent    -> output level only
+// harmonics -> LP/BP/HP filter mode crossfade
+// timbre -> clocked-noise frequency
+// morph -> filter resonance (Q)
+// decay -> LPG gain/brightness decay time
+// accent -> output level only
 class FilteredNoiseEngine : public Engine {
 public:
     FilteredNoiseEngine() { postProcessing.alreadyEnveloped = true; }
@@ -138,17 +130,14 @@ public:
             const float sampleTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
             const float sampleHarmonics = std::clamp(parameters.harmonics + parameters.harmonicsEnvAmount * envValue, 0.0f, 1.0f);
-            // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-            // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-            // positive amount, easily masked by this engine's own natural decay;
-            // negative already reaches full silence at max amount so stays as-is).
+            // Envelope depth is bipolar; positive depth uses the extended gain range.
             const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                             ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                             : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
 
             const float f0 = noteToFrequencyHz(parameters.note + pitchEnvSemitones) / static_cast<float>(sampleRateHz);
             // f1: a second pitch, offset by up to +-24 semitones via
-            // Harmonics - real Plaits' own `note + harmonics*48 - 24`.
+            // Harmonics - reference `note + harmonics*48 - 24`.
             const float f1 =
                 noteToFrequencyHz(parameters.note + pitchEnvSemitones + sampleHarmonics * 48.0f - 24.0f) / static_cast<float>(sampleRateHz);
             constexpr float kClockLowestNote = -24.0f; // "trigger patched" branch - see class comment
@@ -204,4 +193,4 @@ private:
     bool gateOpen = false;
 };
 
-} // namespace ruidocore
+} //

@@ -10,14 +10,14 @@ namespace usina::fx {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 
-// log cosh, without its overflow (|x| - log 2 + log(1 + e^-2|x|))
+// Log cosh, without its overflow (|x| - log 2 + log(1 + e^-2|x|))
 double logCosh(double x)
 {
     const double a = std::fabs(x);
     return a - 0.69314718055994531 + std::log1p(std::exp(-2.0 * a));
 }
 
-// the triangle folder (period 4: rises 0..1, falls to -1 at 3, back to 0 at 4) and its antiderivative (piecewise
+// The triangle folder (period 4: rises 0..1, falls to -1 at 3, back to 0 at 4) and its antiderivative (piecewise
 // quadratic, 0 over a whole period)
 double triFold(double x)
 {
@@ -30,7 +30,7 @@ double triFoldF(double x)
     return u < 1.0 ? 0.5 * u * u : (u < 3.0 ? 2.0 * u - 0.5 * u * u - 1.0 : 0.5 * u * u - 4.0 * u + 8.0);
 }
 
-// first-order antiderivative antialiasing: the mean of f over [x1, x] (F its antiderivative); near x1, f at the midpoint
+// First-order antiderivative antialiasing: the mean of f over [x1, x] (F its antiderivative); near x1, f at the midpoint
 template <typename Fn, typename AntiFn>
 double adaa(double x, double& x1, Fn f, AntiFn F)
 {
@@ -39,7 +39,7 @@ double adaa(double x, double& x1, Fn f, AntiFn F)
     x1 = x;
     return y;
 }
-} // namespace
+} // Namespace
 
 const char* Distort::modeName(int m)
 {
@@ -57,7 +57,7 @@ std::string Distort::characterText(int m, double k)
 {
     k = std::clamp(k, 0.0, 1.0);
     char b[48];
-    switch (m) {                                         // (the same formulas as digital() and shape() below)
+    switch (m) {                                         // The same formulas as digital() and shape() below
         case kCrush:
             std::snprintf(b, sizeof b, "/%d %.1f BITS", 1 + (int)std::floor(k * k * 63.0), 16.0 - 12.0 * k);
             break;
@@ -81,11 +81,11 @@ std::string Distort::characterText(int m, double k)
 void Distort::prepare(double sampleRate)
 {
     fs = sampleRate;
-    dcPole = dcPoleFor(fs);                              // (the DC a bias leaves: out from 10 Hz)
-    toneK = 1.0 - std::exp(-2.0 * kPi * 900.0 / fs);     // (TONE's tilt: around 900 Hz)
-    envUp = 1.0 - std::exp(-1.0 / (0.001 * 4.0 * fs));   // (FUZZ's level, at 4 x: 1 ms up, 80 ms down)
+    dcPole = dcPoleFor(fs);                              // The DC a bias leaves: out from 10 Hz
+    toneK = 1.0 - std::exp(-2.0 * kPi * 900.0 / fs);     // TONE's tilt: around 900 Hz
+    envUp = 1.0 - std::exp(-1.0 / (0.001 * 4.0 * fs));   // FUZZ's level, at 4 x: 1 ms up, 80 ms down
     envDown = 1.0 - std::exp(-1.0 / (0.080 * 4.0 * fs));
-    glide = 1.0 - std::exp(-1.0 / (0.010 * fs));       // (the knobs' glide: 10 ms)
+    glide = 1.0 - std::exp(-1.0 / (0.010 * fs));       // The knobs' glide: 10 ms
     reset();
 }
 
@@ -97,16 +97,16 @@ void Distort::reset()
     fresh = true;
 }
 
-// one sample at 4 x: x already driven and biased
+// One sample at 4 x: x already driven and biased
 double Distort::shape(Channel& c, double x, int mode, double k) const
 {
     switch (mode) {
-        case kSaturate: {                                // tanh + k/2 tanh^2 (even harmonics); F: log cosh + k/2 (x - tanh)
+        case kSaturate: {                                // Tanh + k/2 tanh^2 (even harmonics); F: log cosh + k/2 (x - tanh)
             const double e = 0.5 * k;
             return adaa(x, c.adaaX, [e](double v) { const double t = std::tanh(v); return t + e * t * t; },
                         [e](double v) { return logCosh(v) + e * (v - std::tanh(v)); });
         }
-        case kHard: {                                    // a hard clip, its negative side lower by k (asymmetric)
+        case kHard: {                                    // A hard clip, its negative side lower by k (asymmetric)
             const double hi = 1.0, lo = 1.0 - 0.85 * k;
             return adaa(x, c.adaaX, [hi, lo](double v) { return std::clamp(v, -lo, hi); },
                         [hi, lo](double v) {
@@ -120,8 +120,8 @@ double Distort::shape(Channel& c, double x, int mode, double k) const
             return adaa(x, c.adaaX, [a](double v) { return v >= 0.0 ? 1.0 - std::exp(-v) : -a * (1.0 - std::exp(v / a)); },
                         [a](double v) { return v >= 0.0 ? v + std::exp(-v) - 1.0 : -a * v + a * a * (std::exp(v / a) - 1.0); });
         }
-        case kFuzz: {                                    // the supply sags with the level; under a threshold, the gate
-            const double ax = std::fabs(x);              // shuts (with hysteresis) - it sputters and dies
+        case kFuzz: {                                    // Level-dependent supply sag and hysteretic gate.
+            const double ax = std::fabs(x);              //
             c.env += (ax > c.env ? envUp : envDown) * (ax - c.env);
             const double supply = std::max(0.08, 1.0 - 0.85 * k * std::min(1.0, c.env));
             const double shut = 0.04 * k, open = 0.07 * k;
@@ -129,13 +129,13 @@ double Distort::shape(Channel& c, double x, int mode, double k) const
             if (c.gated) return 0.0;
             return supply * std::tanh(1.5 * x / supply);
         }
-        case kFold: {                                    // sine folding (soft corners) to triangle folding (sharp): k
+        case kFold: {                                    // Sine folding (soft corners) to triangle folding (sharp): k
             const double soft = 1.0 - k;
             return adaa(x, c.adaaX,
                         [soft](double v) { return soft * std::sin(0.5 * kPi * v) + (1.0 - soft) * triFold(v); },
                         [soft](double v) { return soft * (-2.0 / kPi) * std::cos(0.5 * kPi * v) + (1.0 - soft) * triFoldF(v); });
         }
-        case kRectify: {                                 // half-wave (k 0) to full-wave (k 1), then a soft clip
+        case kRectify: {                                 // Half-wave (k 0) to full-wave (k 1), then a soft clip
             const double r = k * std::fabs(x) + (1.0 - k) * std::max(x, 0.0);
             return std::tanh(r);
         }
@@ -144,12 +144,12 @@ double Distort::shape(Channel& c, double x, int mode, double k) const
     }
 }
 
-// one sample at the host's rate: CRUSH, BITS, COMPAND (x already driven and biased)
+// One sample at the host's rate: CRUSH, BITS, COMPAND (x already driven and biased)
 double Distort::digital(Channel& c, double x, int mode, double k)
 {
     x = std::clamp(x, -1.0, 1.0);
     switch (mode) {
-        case kCrush: {                                   // the rate (/1 .. /64) and the bits (16 .. 3) down together
+        case kCrush: {                                   // The rate (/1 .. /64) and the bits (16 .. 3) down together
             const double divide = 1.0 + std::floor(k * k * 63.0);
             const double levels = std::pow(2.0, 15.0 - 12.0 * k);
             c.holdPhase += 1.0;
@@ -159,13 +159,13 @@ double Distort::digital(Channel& c, double x, int mode, double k)
             }
             return c.hold;
         }
-        case kBits: {                                    // the low bits XOR'ed with a pattern: k chooses how many
+        case kBits: {                                    // The low bits XOR'ed with a pattern: k chooses how many
             const int bits = 1 + (int)std::floor(k * 14.0);
             const int mask = (1 << bits) - 1;
             const int v = (int)std::lround(x * 32767.0);
             return (double)(int16_t)(v ^ (0x5A5A & mask)) / 32768.0;
         }
-        case kCompand: {                                 // mu-law (mu 255) quantised to 8 .. 2 bits, decoded
+        case kCompand: {                                 // Mu-law (mu 255) quantised to 8 .. 2 bits, decoded
             const double mu = 255.0, bits = 8.0 - std::floor(k * 6.0);
             const double levels = std::pow(2.0, bits - 1.0) - 1.0;
             const double y = std::copysign(std::log1p(mu * std::fabs(x)) / std::log1p(mu), x);
@@ -180,12 +180,12 @@ double Distort::digital(Channel& c, double x, int mode, double k)
 void Distort::process(float* l, float* r, int n, const Settings& s, bool on)
 {
     if (!on) {
-        if (wasOn) reset();                              // (off: untouched, and the state let go)
+        if (wasOn) reset();                              // Off: untouched, and the state let go
         return;
     }
     wasOn = true;
-    if (s.mode != lastMode) {                            // (a new mode: its shaper starts from rest - no click
-        for (auto& c : ch) {                             // from the last mode's value)
+    if (s.mode != lastMode) {                            // Reset shaper history on mode changes to avoid discontinuities.
+        for (auto& c : ch) {                             //
             c.adaaX = 0.0;
             c.env = 0.0;
             c.gated = false;
@@ -194,7 +194,7 @@ void Distort::process(float* l, float* r, int n, const Settings& s, bool on)
         }
         lastMode = s.mode;
     }
-    Knobs to;                                            // (where the knobs glide to)
+    Knobs to;                                            // Parameter smoothing targets.
     to.drive = std::pow(10.0, std::clamp((double)s.driveDb, 0.0, 48.0) / 20.0);
     to.out = std::pow(10.0, std::clamp((double)s.outputDb, -24.0, 12.0) / 20.0);
     to.mix = std::clamp((double)s.mix, 0.0, 1.0);
@@ -223,9 +223,8 @@ void Distort::process(float* l, float* r, int n, const Settings& s, bool on)
             double wet, dry;
             if (over) {                                  // 1 x -> 4 x, shaped, back; the dry the same way, unshaped
                 double a, bb, s4[4];
-                // (each stage takes its samples in time order: the two inner downs as statements, never as the
-                // arguments of the outer one - the order those are evaluated in is the compiler's, and MSVC takes
-                // the later pair first: -4.3 dB at 10 kHz, measured 21/10)
+                // Evaluate inner downsamplers sequentially. Argument evaluation order is unspecified
+                // and can reverse sample order if nested calls are passed as arguments.
                 st.os1.up(x, a, bb);
                 st.os2.up(a, s4[0], s4[1]);
                 st.os2.up(bb, s4[2], s4[3]);
@@ -238,8 +237,8 @@ void Distort::process(float* l, float* r, int n, const Settings& s, bool on)
                 wet = digital(st, x * drive + bias, mode, k);
                 dry = x;
             }
-            const double y = st.dcWet.process(wet, dcPole);    // (the bias's DC out)
-            dry = st.dcDry.process(dry, dcPole);               // (the dry the same: it matches the wet's phase)
+            const double y = st.dcWet.process(wet, dcPole);    // The bias's DC out
+            dry = st.dcDry.process(dry, dcPole);               // The dry the same: it matches the wet's phase
             st.toneLp += toneK * (y - st.toneLp);              // TONE: the tilt around its pivot
             const double hp = y - st.toneLp;
             const double toned = y + 0.5 * tilt * (hp - st.toneLp);
@@ -248,4 +247,4 @@ void Distort::process(float* l, float* r, int n, const Settings& s, bool on)
     }
 }
 
-} // namespace usina::fx
+} // Namespace usina::fx

@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,18 +29,8 @@
 
 namespace ruidocore {
 
-// Exact port of stmlib::SoftClip/SoftLimit (stmlib/dsp/dsp.h, MIT
-// licensed, github.com/pichenettes/stmlib, downloaded and read
-// directly) - a cubic soft-clip curve, linear near zero, saturating
-// smoothly toward +-1 as x approaches +-3, hard-clamped beyond that.
-// Used here as a final master-bus safety net (2026-08-27) on top of
-// the per-voice ruidocore::Limiter: real Plaits only ever runs ONE
-// voice per module, so its per-voice limiter is also its final output
-// stage. RuidoCore's engines are polyphonic (multiple round-robin
-// voices summed per part, multiple parts summed per bus), so several
-// individually-limited voices can still sum above unity - this stage
-// is the part of the safety chain real Plaits never needed but this
-// project does.
+// Bounded soft-clipping and soft-limiting transfer functions.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 inline float softClip(float x) {
     if (x < -3.0f)
         return -1.0f;
@@ -51,4 +39,4 @@ inline float softClip(float x) {
     return x * (27.0f + x * x) / (27.0f + 9.0f * x * x);
 }
 
-} // namespace ruidocore
+} //

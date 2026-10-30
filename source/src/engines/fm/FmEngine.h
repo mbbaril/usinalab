@@ -4,9 +4,9 @@
 // BYPASS and MUTE, the 40 algorithms, ALG FB and the user matrix; after them the voice filter (18 types, EG2, key
 // track, drive; SK CASC the part's, with its VCA) and OUT GAIN, LOFI. Native: floating point, at the rate it is
 // prepared at (the plugin prepares it at N x the host's: everything in the voice oversampled, one decimation after),
-// every operator one sample at a time through the matrix (one path for every algorithm), the envelopes per control
-// block. Its reference is the CALDERA firmware (usina16 opx_core.c / eng_opx.c): tests/ab compares the two on the
-// same presets. Per instance, no globals.
+// every operator one sample at a time through the matrix; envelopes update per control block.
+// Per-instance state with no globals. Reference-format presets retain their
+// parameter names and ordering.
 #pragma once
 #include "FmEffects.h"
 #include "FmFilters.h"
@@ -96,7 +96,7 @@ private:
         int atkCurve = 0;
         double timeScale = 1.0;                  // (RATE KEY: the stages' times by the note - an operator's)
     };
-    // a cutoff, creamy (opx_vflt_lg): the patch's part slides (two one-poles, 1/16 a control block: ~23 ms), the
+    // a cutoff, smoothing (opx_vflt_lg): the patch's part slides (two one-poles, 1/16 a control block: ~23 ms), the
     // moving part (EG2, key track) adds on at once, the sum ramps across the block from where the last one ended
     struct Slide {
         double s0 = 0.0, s1 = 0.0, pv = 0.0, cur = 0.0, step = 0.0;
@@ -134,6 +134,7 @@ private:
         double strikeVel = -1.0;                 // MODAL: a note's strike, struck at its first control block (0..1)
         SamplePlay sp;                           // SAMPLE: where this voice reads the recording
         UnisonState uni;                         // UNISON: the side copies' phases and drifts (FmUnison.h)
+        float side = 0.0f;                       // stereo, stage 2: its side (right minus left, halved; 0: mono)
     };
     struct Voice {
         bool active = false, gate = false;
@@ -148,8 +149,16 @@ private:
         Env eg2;                                 // EG2: the filter's envelope
         VoiceFilter vf;
         VoiceLpg lpg;                            // the low pass gate (FmLpg.h), after the filter
+        VoiceFilter vfR;                         // stereo, stage 2: the right channel's filter, LPG and DC blocker
+        VoiceLpg lpgR;
+        double dcR = 0.0, fltOff = 0.0;          // (fltOff: OFFSET this block, octaves)
         float lpgDecay = 0.5f, lpgColor = 0.5f;  // (its DECAY and COLOR as the routes move them, 0..1)
+        float lpgDecayR = 0.5f;                  // (the LPG in stereo: the right's DECAY; the sources' levels,
+        float lpgSrcL = 0.0f, lpgSrcR = 0.0f;    // 0..1 - a bipolar source from -1..1 to 0..1)
         Slide flt;                               // the filter's cutoff (log2 Hz): slid and ramped
+        VoiceFilter vf2, vf2R;                   // second filter: left (or mono) and right
+        Slide flt2;                              // second filter cutoff, log2 Hz
+        double f2Reso = 0.0, f2Drive = 1.0, f2Mix = 1.0;   // per control block, modulation applied
         Env eg1;                                 // EG1: the operators' pitch envelope
         double lph[kNumLfos] {}, lfade[kNumLfos] { 1.0, 1.0, 1.0 };   // the LFOs' own phases (KEY SYNC VOICE), fades
         double lfo[kNumLfos] {};                 // the LFOs' values this control block
@@ -157,6 +166,9 @@ private:
         std::array<OpCoef, 6> oc {};             // the operators' mode settings this block (the patch's, or moved)
         std::array<double, kNumValues> mod {};   // the routes' offsets this block, in each value's own units
         double fReso = 0.0, fDrive = 1.0, outGain = 1.0;   // the voice filter's RESO, DRIVE, OUT GAIN this block
+        // the voices in stereo: where the note sits (-1..1, from SPREAD at its start), its two gains now and
+        // their step a sample (ramped across a control block; at the middle both exactly 1: mono as before)
+        double place = 0.0, panL = 1.0, panR = 1.0, dPanL = 0.0, dPanR = 0.0;
         std::array<FuncState, 3> func {};        // FUNC 1..3, run per note
         double combSt[3] {};                     // COMB 1..3's state (LAG, FOLLOWER)
         bool trigHigh[kNumLfos + kNumEnvs + 3] {};   // RETRIG: each LFO's, envelope's, FUNC's source above 0.5 last block
@@ -166,7 +178,7 @@ private:
     struct LfoRandom {
         double held = 0, prev = 0, tp = 0, tpp = 0, lv = 0, lvp = 0;
         uint32_t rnd = 0;
-        // the chaotic waves' maps (22/10), a step a cycle: LOGISTIC (r 3.9), HENON (1.4, 0.3), LORENZ (the classic
+        // the chaotic waves' maps, a step a cycle: LOGISTIC (r 3.9), HENON (1.4, 0.3), LORENZ (the classic
         // flow, 8 steps of 0.01 a cycle); each one's value now and its last cycle's (-1..1), the LFO gliding between
         double logX = 0.3, henX = 0.1, henY = 0.1, lorX = 1.0, lorY = 1.0, lorZ = 1.0;
         double logV = 0, logP = 0, henV = 0, henP = 0, lorV = 0, lorP = 0;
@@ -192,9 +204,13 @@ private:
         std::array<std::array<float, 6>, 6> mx {};   // [from][to], core order (1.0 = a preset algorithm's link)
         uint8_t dout = 0, car = 0;
         bool filterOn = false, cascOn = false;       // the voice filter (not CASC); SK CASC (the part's)
+        bool stereo = false;                         // stage 2: a voice path in two channels (else mono, as before)
+        int f2Route = 0, f2Type = 0;                 // f2Type is a voice filter index (SK CASC skipped)
+        double f2lg = 0.0;                           // second filter cutoff, log2 Hz
         double flg = 0.0, hlg = 0.0;                 // CUTOFF, HP CUT as log2 Hz
         double drive = 1.0, cascFb = 0.0;            // FLT DRIVE x1..x8; CASC FB x -2..2
         double outGain = 1.0, cascGain = 1.0;        // OUT GAIN (a voice's), CASC OUT + OUT GAIN (the part's)
+        int altSide = 1;                             // (SPREAD ALTERNATE: the side the next note takes)
         std::array<double, 6> l1Level {};            // LFO1 -> level (-1..1)
         double lfoCyc[kNumLfos] {}, lfoFadeStep[kNumLfos] {};      // the LFOs: cycles a control block; their fades' step a block
         double lfoReset[kNumLfos] {};                       // the phase a key restarts them at (< 0: random)
@@ -202,6 +218,8 @@ private:
 
     void derive();
     void lfoRates();                                 // the LFOs' cycles a block (SPEED, or SYNC at the host's tempo)
+    void updateStereo();                             // stage 2: whether the voice path is two channels (patch, routes)
+    double cascSrcLevel = 0.0;                       // SK CASC's VCA SOURCE: the newest voice's source level, 0..1
     void envGo(Env& e, Env::Stage st, const Adsr& a) const;
     double envTick(Env& e, const Adsr& a) const;
     void envRelease(Env& e, const Adsr& a) const;    // the key let go (ADR: ignored, it releases by itself)
@@ -239,7 +257,7 @@ private:
     bool fw2x = false;
     double dcCoef = 0.0;
     Part part;
-    std::vector<float> partBuf;                      // the voices' sum for SK CASC (sized in prepare)
+    std::vector<float> partBuf;                      // the voices' sum for SK CASC (sized in prepare())
     // the common LFOs (KEY SYNC OFF and COMMON; their random values serve every voice): the phase in cycles, the
     // random state, where the engine's control block is
     double lph[kNumLfos] {};

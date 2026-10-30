@@ -13,16 +13,8 @@ namespace ruidocore {
 // docs/SYNTH_ENGINE_RESEARCH.md).
 enum class TriggerState { Low, RisingEdge, Unpatched, High };
 
-// One small, shared continuous-parameter surface, reinterpreted per
-// engine. This is the single most load-bearing design decision in this
-// module: every synthesis algorithm reads from the SAME few knobs
-// (harmonics/timbre/morph + note/trigger/decay/accent) and decides what
-// they mean for itself (e.g. for FM: harmonics = operator ratio, timbre =
-// modulation index, morph = feedback). This is what makes a generic
-// modulation matrix (RuidoCore's own Mod engine, already built) usable
-// across different synthesis algorithms without per-algorithm special
-// casing - a MOD generator just targets "harmonics" or "timbre" as a
-// paramId, same as it would target any other parameter.
+// Shared continuous-parameter interface. Engines interpret pitch, harmonics,
+// timbre, morph and decay according to their own synthesis model.
 //
 // `decay` is a deliberate addition beyond the pure 3-knob
 // (harmonics/timbre/morph) shape documented in the research notes - this
@@ -37,47 +29,14 @@ struct EngineParameters {
     float timbre = 0.5f;     // 0..1
     float morph = 0.5f;      // 0..1
     float decay = 0.5f;      // 0..1, engine-defined mapping to an actual time
-    float accent = 1.0f;     // 0..1, scales output level - kept separate from `timbre`
-
-    // Bipolar depth (-1..1, 0 = off) for an engine's own built-in
-    // Dsp/DecayEnvelope.h-driven "punch" on trigger - the same internal-
-    // envelope-normalled-to-CV mechanism real Plaits voices have
-    // (2026-08-27, "o plaits possui um envelope interno que pode ser
-    // usado pra criar um pitch envelope também" -> "seria legal poder
-    // atribuir ele também aos outros knobs" - real Plaits normals this
-    // ONE shared envelope to all three of its FM/TIMBRE/MORPH CV inputs
-    // simultaneously, not just pitch, so all three destinations are
-    // exposed here the same way). `pitchEnvAmount` squares the envelope
-    // and scales by 48 semitones (a sharp transient spike, matching
-    // Plaits' own formula); `timbreEnvAmount`/`morphEnvAmount` add the
-    // envelope's value directly (unsquared), matching Plaits' own
-    // simpler direct-modulation formula for those two. An engine that
-    // doesn't implement any of these is free to ignore them, same as
-    // `decay` above - BUT "free to ignore" is a silent, easy-to-forget
-    // trap for whoever writes the NEXT engine: as of 2026-08-28 only
-    // FmEngine/WavetableEngine/FilteredNoiseEngine/ParticleNoiseEngine/
-    // SwarmEngine actually read these 5 fields (grep for "EnvAmount" in
-    // this directory to check current coverage before trusting this
-    // list) - BassDrumEngine/SnareDrumEngine/HiHatEngine/ModalEngine/
-    // StringEngine do NOT, so their own internal-envelope knobs (exposed
-    // in every host UI regardless of engine, since this struct doesn't
-    // vary per engine) turn/read but produce ZERO audible change - a
-    // real user-facing bug ("os envelopes nao parecem ter efeito",
-    // caught 2026-08-28 with a KICK part set to String). EVERY new
-    // engine MUST either wire this same DecayEnvelope-driven hook (see
-    // FmEngine.h's own `render()` for the reference implementation) or
-    // get a deliberate, written-down reason not to - never leave it
-    // silently unimplemented the way the 5 above currently are.
+    float accent = 1.0f;     // Output level is 0..1. Envelope depths are bipolar, -1..1, with zero disabled.
+    // Pitch depth uses squared envelope amplitude scaled to 48 semitones; timbre
+    // and morph use the envelope directly. Each engine must implement the applicable hooks.
     float pitchEnvAmount = 0.0f;
     float timbreEnvAmount = 0.0f;
     float morphEnvAmount = 0.0f;
-    // Real Plaits only normals its internal envelope to FM/TIMBRE/MORPH
-    // (a hardware limit - those are the only 3 CV inputs it has).
-    // 2026-08-27, user: "não temos essa limitação aqui. pode adicionar
-    // aos outros" - this is software, so the same envelope is exposed to
-    // Harmonics and Level (a plugin-level gain trim on top of whatever
-    // amplitude shaping the engine's own LPG already does) too, with no
-    // hardware reason to hold back.
+    // The same internal envelope also controls harmonics and a final level trim.
+    // Level modulation supplements the LPG amplitude envelope.
     float harmonicsEnvAmount = 0.0f;
     float levelEnvAmount = 0.0f;
 };
@@ -105,18 +64,8 @@ struct PostProcessingSettings {
 // layer, whatever this specific algorithm can usefully expose) - a host
 // is free to ignore `aux` or route it through its own effect chain.
 //
-// `in` is an OPTIONAL input buffer (nullptr for a pure generator that has
-// nothing to read). This one signature deliberately covers both roles a
-// synthesis algorithm can play (2026-08-27, "o rings e clouds funcionam
-// como processadores de audio também" / "trate eles de forma modular"):
-// a pure generator (this library's own `FmEngine`) simply ignores `in`;
-// a resonator/granular-style algorithm that EXCITES itself from an
-// external audio signal (a modal resonator bank driven by a real
-// impulse/audio input, a granular processor reading a live input instead
-// of only a stored buffer) reads from it. Engines that never use `in`
-// don't need a separate base class or interface - the same `Engine`
-// covers both, so a host's voice-management code never has to special-
-// case "is this one a generator or a processor."
+// Input may be nullptr for generators. Render writes the requested sample count;
+// the caller owns buffers and manages voice mixing.
 class Engine {
 public:
     virtual ~Engine() = default;
@@ -136,21 +85,8 @@ public:
     // state.
     virtual bool isActive() const { return true; }
 
-    // Live readback of this instance's own internal punch envelope
-    // (Dsp/DecayEnvelope.h), 0..1, for a host UI to visualize the SAME
-    // curve pitchEnvAmount/timbreEnvAmount/etc above actually modulate
-    // with in real time (2026-08-28, "e ainda assim nao ha o movimento
-    // dos knobs usando o envelope hardwired" - a fixed on-trigger flash
-    // pulse isn't the same thing as a live trace of the real decay
-    // curve, which is what this exists for). Default 0 (matches
-    // `isActive`'s own "safe assumption for an engine with no such
-    // state" pattern) - only the 5 engines that actually implement the
-    // pitch/timbre/morph/harmonics/level EnvAmount hook above (see that
-    // struct's own comment for which ones, and re-grep before trusting
-    // it) override this to `return decayEnvelope.value();`. A NEW
-    // engine that wires up the EnvAmount hook MUST also override this
-    // at the same time - it is the other half of the same feature, not
-    // an optional extra.
+    // Read the internal decay envelope for host display or cross-engine modulation,
+    // in the normalized range 0..1. Engines without that envelope may return zero.
     virtual float getEnvelopeValue01() const { return 0.0f; }
 
     PostProcessingSettings postProcessing;
@@ -165,10 +101,10 @@ inline float noteToFrequencyHz(float noteNumber) {
 
 // Shared by any engine that needs to convert a semitone interval into a
 // linear frequency ratio (e.g. FmEngine's ratio-quantizer LUT lookup,
-// or a Plaits-style block-rate decay-time formula like
+// or a reference-style block-rate decay-time formula like
 // `SemitonesToRatio(-96 * decay)` - see Dsp/DecayEnvelope.h's own users).
 inline float semitonesToRatio(float semitones) {
     return std::exp2(semitones / 12.0f);
 }
 
-} // namespace ruidocore
+} //

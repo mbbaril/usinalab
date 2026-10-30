@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - the patch's values: every name of the CALDERA preset language, its range and its value in the
-// init patch, in the firmware's order (usina16 eng_opx.c OPX_PD: the 27 values of OP1..OP6, then the 94 of the
-// patch). One table for the patch reader (FmPatch), the plugin's parameters (their IDs come from these names and
-// never change: rule 19) and the editor.
+// Usina patch schema: names, ranges and defaults in reference-format order.
+// Shared by the patch reader, host parameters and editor. Parameter IDs derive
+// from these names and must remain stable.
 #pragma once
 #include <string>
 #include <vector>
@@ -20,8 +19,8 @@ enum GlobalValue { GV_ALG, GV_PHASE, GV_E1ATK, GV_E1DEC, GV_E1SUS, GV_E1REL, GV_
                    GV_L2FADE, GV_A1T, GV_A1D, GV_A2T, GV_A2D, GV_A3T, GV_A3D, GV_ALGFB, GV_UDOUT,
                    GV_UMX, GV_HPCUT = GV_UMX + 36, GV_HPPEAK, GV_FDRIVE, GV_CFB, GV_HPEG2, GV_HPLFO2, GV_LOFI, GV_PVCA,
                    GV_COUT, GV_VP1, GV_VDEST = GV_VP1 + 6, GV_CHOT, GV_CLIFE, GV_OGAIN, kGlobalValues };
-constexpr int kFwValues = 6 * kOpValues + kGlobalValues;      // 256: the firmware's (the CALDERA preset language)
-// the Usina's own values, after the firmware's (a CALDERA preset leaves them at their defaults): ENV 1 (the
+constexpr int kFwValues = 6 * kOpValues + kGlobalValues;      // 256: the firmware's (the preset format)
+// the Usina's own values, after the firmware's (a reference-format preset leaves them at their defaults): ENV 1 (the
 // modulation's own envelope; ENV 2 and 3 are EG1 and EG2), LFO 3 (as LFO1 and LFO2)
 // FUNC k (k = 0..2): MODE, SPEED, POLARITY, SMOOTH, SUSTAIN (the point it holds at); RAND k: TYPE, SPEED, A, B,
 // RISE, FALL; COMB k: TYPE, SOURCE, MOD, AMOUNT (each block of the three after the other: XV_F1MODE + 5 k ...)
@@ -41,17 +40,30 @@ enum ExtValue { XV_ENV1ATK, XV_ENV1DEC, XV_ENV1SUS, XV_ENV1REL, XV_ENV1CRV,
                 XV_O1HARD, XV_O1EXCITER, XV_O1PRESSURE, XV_O1TENSION, XV_O1RATTLE,
                 // FUNC k's and RAND k's SYNC (0 free, else kSyncBeats) and RETRIG (a source): FUNC 1..3, then RAND 1..3
                 XV_F1SYNC = XV_O1MAT + 72, XV_F1RETRIG,
-                // the voice's LPG (FmLpg.h, 21/10): MODE (OFF, PING, EG2), DECAY, COLOR
+                // the voice's LPG (FmLpg.h): MODE (OFF, PING, EG2), DECAY, COLOR
                 XV_LPGMODE = XV_F1SYNC + 12, XV_LPGDECAY, XV_LPGCOLOR,
-                // operator k's RATE KEY (22/10, the chips' key scale rate): 0..100 %, its envelope's times by the note
+                // operator k's RATE KEY (the chips' key scale rate): 0..100 %, its envelope's times by the note
                 XV_O1RATEKEY = XV_LPGMODE + 3,
-                // operator k's MODAL DAMP (28/10, the festival's sprint): 0..100, a hand on the object when the key is
+                // operator k's MODAL DAMP: 0..100, a hand on the object when the key is
                 // let go (FmModal.h)
                 XV_O1DAMP = XV_O1RATEKEY + 6,
-                // operator k's UNISON SUB and PWM (28/10): 0..100 - a square an octave below; the squares' widths
+                // operator k's UNISON SUB and PWM: 0..100 - a square an octave below; the squares' widths
                 // moving, each copy at its own pace (FmUnison.h)
                 XV_O1SUB = XV_O1DAMP + 6, XV_O1PWM = XV_O1SUB + 6,
-                kExtValues = XV_O1PWM + 6 };
+                // the voices in stereo, stage 1: SPREAD (KEY, ALTERNATE, RANDOM: where each note sits), WIDTH
+                // 0..100 (how far), PAN -100..100 (the whole patch, a voice's when moved by a route)
+                XV_SPREAD = XV_O1PWM + 6, XV_WIDTH, XV_PAN,
+                // stereo, stage 2: operator k's WIDTH (UNISON: its copies spread; MODAL: two pickups apart),
+                // 0..100; the voice filter's OFFSET, the right channel's cutoff from the left's, -48..48 semitones
+                XV_O1WIDTH = XV_PAN + 1, XV_FLTOFF = XV_O1WIDTH + 6,
+                // the LPG in stereo and its sources: SOURCE (LPG MODE 3: the gate follows a
+                // modulation source), the right channel's own MODE (SAME, PING, EG2, SOURCE), SOURCE and DECAY offset;
+                // SK CASC's VCA SOURCE (CASC VCA 3)
+                XV_LPGSRC = XV_FLTOFF + 1, XV_LPGRMODE, XV_LPGRSRC, XV_LPGRDEC, XV_CASCSRC,
+                // Second voice filter: route (off, series, parallel, stereo right), type, cutoff, resonance, drive,
+                // EG2 depth, key tracking from KEY CTR, mix.
+                XV_F2ROUTE = XV_CASCSRC + 1, XV_F2TYPE, XV_F2CUT, XV_F2RESO, XV_F2DRIVE, XV_F2EG2, XV_F2KEY, XV_F2MIX,
+                kExtValues = XV_F2MIX + 1 };
 constexpr int kFuncValues = 5, kRandValues = 6, kCombValues = 4;   // (one FUNC's, RAND's, COMB's values)
 constexpr int kLfoXValues = 6, kEnvXValues = 4;                      // (one LFO's, one envelope's M4 values)
 constexpr int kModalXValues = 12;                                    // (one operator's MODAL values)

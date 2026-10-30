@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina - objects made in zeroed memory, as a module makes its globals. The module ports' processors (fx/texture,
-// fx/clouds) are globals on their modules, so they start zeroed (static storage), and upstream relies on it: their
-// constructors are empty and Init leaves some members as they were (found 21/10 with the texture: on the heap its
-// gain control began as garbage - a click, a gain of thousands). So they are made here: calloc, placement new.
+// Zero-initialized storage for DSP classes that assume static-storage initialization.
+// Empty constructors and partial Init methods may otherwise leave state uninitialized.
+// Allocate with calloc and construct in place; see reset() for allocation-free reuse.
 #pragma once
 #include <cstdlib>
 #include <cstring>
@@ -23,15 +22,15 @@ template <typename T>
 using Zeroed = std::unique_ptr<T, ZeroedDelete<T>>;
 
 template <typename T>
-Zeroed<T> makeZeroed()                                   // (allocates: never on the audio thread)
+Zeroed<T> makeZeroed()                                   // Allocates: never on the audio thread
 {
     void* m = std::calloc(1, sizeof(T));
     if (m == nullptr) throw std::bad_alloc();
-    return Zeroed<T>(new (m) T);                         // (default-initialised: the empty constructor keeps the zeros)
+    return Zeroed<T>(new (m) T);                         // Default-initialised: the empty constructor keeps the zeros
 }
 
 template <typename T>
-void rezero(Zeroed<T>& p)                                // (the same memory, zeroed and made again: no allocation)
+void rezero(Zeroed<T>& p)                                // The same memory, zeroed and made again: no allocation
 {
     T* m = p.get();
     m->~T();
@@ -39,4 +38,4 @@ void rezero(Zeroed<T>& p)                                // (the same memory, ze
     new (m) T;
 }
 
-} // namespace usina
+} // Namespace usina

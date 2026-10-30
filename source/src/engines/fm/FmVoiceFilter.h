@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - the voice filter (after the operators) and its oversampling, ported from the CALDERA firmware
-// (usina16 opx_core.c: opx_flt_run, opx_flt_run_os, opx_cmos_run_os, opx_casc_run; eng_opx.c opx_render, opx_post):
+// Usina voice filtering and oversampling.
 //   HalfBand     a 2x up / down stage: two chains of first-order all-passes (the firmware's elliptic half-band,
 //                Valenzuela & Constantinides' design as HIIR makes it: flat to 0.23, -99 dB from 0.27 of the high rate)
 //   Decimator    N x down to 1 x by half-band stages (the engine rendered at N x: everything in the voice oversampled)

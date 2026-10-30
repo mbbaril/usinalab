@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - the CHAOS and STOCHASTIC operator modes (22/10; the user: "possivelmente há muita coisa do
-// supercollider que podemos utilizar", "confirme se está na lista um operador estocástico"). The generators are the
-// published maps and processes; SuperCollider's chaos and noise UGens (GPL-3.0) and Xenakis' GENDYN (Formalized
-// Music) are the references, credited in THIRD_PARTY.md; the code is ours.
+// Usina FM engine: chaotic maps and dynamic stochastic oscillators.
+// Technical references and attribution: THIRD_PARTY.md.
 //
 // CHAOS: an operator becomes a chaotic generator. The maps step once a cycle of the operator's phase - the noise has a
 // pitch, and the matrix's FM, moving that phase, shakes it:
@@ -15,13 +13,10 @@
 //   CRACKLE   y = |p y[-1] - y[-2] - 0.05|            CHAOS: p 1 .. 2       SHAPE: where it starts
 //   DUST      random impulses, as many a second as the operator's pitch            CHAOS: from Dust (0..1) to Dust2
 //             (-1..1)
-// SMOOTH (the maps): from stepped (each value held until the next step) to a line between the last two. A map gone
-// still (32 steps the same: a fixed point - they lie scattered through every map's values, measured 22/10) is kicked
-// off it: an attracting point pulls it back, a fading ping each time, never silence.
-// The flow - LORENZ, the Lorenz system - is integrated every sample instead: the operator's pitch is the speed of the
-// flow (SHAPE: about 1/4 .. 2 loops of the attractor a cycle), so the attractor's own loops sound at the pitch. (One
-// step a cycle made it an infrasonic wobble at any usual note, which the voice's DC blocker removed - measured 22/10)
-//             CHAOS: r 25 .. 60 (below about 24.74 it settles on a point)
+// SMOOTH interpolates successive map values. After 32 unchanged steps, a small
+// random perturbation moves the map away from a fixed point.
+// LORENZ is integrated per sample; SHAPE sets about 1/4..2 attractor loops per
+// pitch cycle. CHAOS sets r in [25, 60], above the fixed-point threshold ~24.74.
 //
 // STOCHASTIC: GENDY, dynamic stochastic synthesis - a cycle of breakpoints whose levels and lengths walk at random
 // as the cycle passes them, the steps drawn from one of Xenakis' distributions (each as an inverse of its own

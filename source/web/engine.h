@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 #pragma once
 #include "engines/fm/FmEngine.h"
 #include "engines/fm/PerformanceMidi.h"
@@ -11,6 +11,7 @@
 #include "fx/RoomReverb.h"
 #include "fx/Distort.h"
 #include "fx/Delay.h"
+#include "fx/Filter.h"
 #include "fx/BusMatch.h"
 #include "seq/SeqPlayer.h"
 #include <string>
@@ -79,10 +80,12 @@ private:
     fx::RoomReverb room;
     fx::Distort distort;
     fx::Delay delay;
+    fx::Filter filterFx;
     fx::Texture::Knobs tk;
     fx::Vapor::Knobs vk;
     fx::Distort::Settings dk;
     fx::Delay::Settings ek;
+    fx::Filter::Settings fk;
     std::array<bool,blockSize> texGate {}, vapGate {};
     std::array<float,blockSize> dryL {}, dryR {}, aL {}, aR {}, bL {}, bR {}, parL {}, parR {}, auxL {}, auxR {}, loopL {}, loopR {};
     std::array<fx::BusMatch,2> matchDry, matchPad;

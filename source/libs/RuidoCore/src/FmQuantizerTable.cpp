@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,8 +29,7 @@
 
 namespace ruidocore {
 
-// See FmQuantizerTable.h for provenance/license (ported from Plaits'
-// plaits/resources.cc, MIT, github.com/pichenettes/eurorack).
+// See THIRD_PARTY.md and the preserved license notice for source provenance.
 const float kFmFrequencyQuantizerTable[] = {
   -1.200000000e+01, -1.200000000e+01, -1.200000000e+01, -1.184000000e+01,
   -1.184000000e+01, -1.184000000e+01, -1.111000000e+01, -1.038000000e+01,
@@ -69,4 +66,4 @@ const float kFmFrequencyQuantizerTable[] = {
    3.600000000e+01,  3.600000000e+01,
 };
 
-} // namespace ruidocore
+} //

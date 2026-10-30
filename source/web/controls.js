@@ -15,6 +15,7 @@ const choices = {
   rev_color: ['Clean', 'Tape'],
   dist_mode: ['Saturate', 'Hard', 'Diode', 'Fuzz', 'Fold', 'Rectify', 'Crush', 'Bits', 'Compand'],
   dly_character: ['Digital', 'Tape'], dly_routing: ['Stereo', 'Ping-pong', 'Mono'],
+  fxf_type: ['LPF 12', 'LPF 24', 'LPF SK', 'LPF OTA', 'HPF 12', 'HPF 24', 'HPF SK', 'BPF 6', 'BPF 12', 'BRF 6', 'BRF 12', 'SK LPF HOT', 'SK HPF HOT', 'CMOS LP', 'CMOS HP', 'CMOS BP', 'CMOS DIST'],
   fx_route: ['A → B', 'A ∥ B', 'B → A'], phase: ['Livre', 'Aleatória', 'Aleatória por nota'],
   filter_type: ['LPF 12', 'LPF 24', 'LPF SK', 'LPF OTA', 'HPF 12', 'HPF 24', 'HPF SK', 'BPF 6', 'BPF 12', 'BRF 6', 'BRF 12', 'SK CASC (HP → LP)', 'SK LPF HOT', 'SK HPF HOT', 'CMOS LP', 'CMOS HP', 'CMOS BP', 'CMOS DIST']
 };
@@ -22,7 +23,7 @@ const waves = ['SIN', 'SIN 12BIT', 'SIN 8BIT', 'TRI', 'SAW', 'SAW HD', 'SQR', 'S
 export function controlChoices(d) {
   if (d.choices) return d.choices;
   if(d.id==='bend_range'||d.id==='mpe_bend_range')return Array.from({length:d.max-d.min+1},(_,i)=>`${i+d.min} st`);
-  if (/_retrig$/.test(d.id)||/^comb\d_(source|mod)$/.test(d.id)) return Array.from({length:d.max+1},(_,i)=>i?modSources.find(s=>s.index===i)?.name||String(i):'NONE');
+  if (/_retrig$/.test(d.id)||/^comb\d_(source|mod)$/.test(d.id)||/^(lpg_source|lpg_r_source|casc_source)$/.test(d.id)) return Array.from({length:d.max+1},(_,i)=>i?modSources.find(s=>s.index===i)?.name||String(i):'NONE');
   if (/^(op\d_env|eg[12]|env1)_mode$/.test(d.id)) return ['ADSR','ADR','LOOP'];
   if (/^lfo\d_(wave|wave_b)$/.test(d.id)) return ['TRI','SAW DOWN','SAW UP','SQR','SIN','S/H','GUITAR','RANDOM','TRI +','SAW DOWN +','SAW UP +','SQR +','EXP TRI','EXP SAW DN','EXP SAW UP','TRI 4 STEP','TRI 6 STEP','SAW 4 STEP','SAW 6 STEP','S.RND TIME','S.RND LV+TIME','RND TIME','RND LV+TIME','CHAOS LOGISTIC','CHAOS HENON','CHAOS LORENZ'];
   if (/^lfo\d_key_sync$/.test(d.id)) return ['FREE','COMMON','VOICE'];
@@ -30,11 +31,15 @@ export function controlChoices(d) {
   if (/^func\d_polarity$/.test(d.id)) return ['+ (0..1)','+/− (−1..1)'];
   if (/^func\d_mode$/.test(d.id)) return ['LOOP','ONE-SHOT','ENVELOPE','ENV LOOP'];
   if (/^rand\d_type$/.test(d.id)) return ['RANDOM LOOP','SAMPLE & HOLD','BINARY'];
-  if (/^comb\d_type$/.test(d.id)) return ['SUM','DIFF','MULTIPLY','DIVIDE','CROSSFADE','LAG','THRESHOLD','OFFSET','REMAP','FOLLOWER','MIN','MAX','INPUT LEVEL'];
+  if (/^comb\d_type$/.test(d.id)) return ['SUM','DIFF','MULTIPLY','DIVIDE','CROSSFADE','LAG','THRESHOLD','OFFSET','REMAP','FOLLOWER','MIN','MAX','INPUT LEVEL','BIT','XOR','AND','ADD MOD 256'];
   if (/^a[123]_target$/.test(d.id)) return ['CLASSIC (A1 RATIO, A2 FB, A3 DETUNE)','OFF','RATIO (MODULATORS)','FB (ALL FM OPS)','DETUNE SPREAD (CARRIERS)',...patchNames];
   if (d.id === 'algo') return [...Array.from({length:40},(_,i)=>String(i+1)), 'USER'];
-  if (d.id === 'casc_vca') return ['Gate', 'EG2', 'Envelope'];
-  if (d.id === 'lpg_mode') return ['Desligado', 'Ping', 'EG2'];
+  if (d.id === 'casc_vca') return ['Gate', 'EG2', 'Envelope', 'Fonte'];
+  if (d.id === 'lpg_mode') return ['Desligado', 'Ping', 'EG2', 'Fonte'];
+  if (d.id === 'lpg_r_mode') return ['Igual', 'Ping', 'EG2', 'Fonte'];   // (the LPG's right side)
+  if (d.id === 'spread') return ['KEY', 'ALTERNATE', 'RANDOM'];
+  if (d.id === 'f2_route') return ['Desligado', 'Série', 'Paralelo', 'Estéreo'];   // (FILTER 2)
+  if (d.id === 'f2_type') return choices.filter_type.filter((_, i) => i !== 11);   // (the voice types but SK CASC)   // (the voices in stereo: the plugin's names)
   if (/^op\d_freq$/.test(d.id)) return ['RATIO', 'FIXED'];
   if (/^op\d_coarse$/.test(d.id)) return ['1/128', '1/64', '1/32', '1/16', '1/8', '1/4', '1/2', ...Array.from({length:32}, (_, i) => String(i + 1))].map(v => `× ${v}`);
   if (/^op\d_wave$/.test(d.id)) return waves;
@@ -122,6 +127,7 @@ export function operatorValue(mode, which, fx, models = {}) {
     case 12:return [spec('READ',null,['ONCE','LOOP','PING-PONG','REVERSE']),spec('START'),spec('LENGTH',v=>pct(Math.floor((v+1)/2))),
       ((fx%4)+4)%4===1?spec('XFADE'):spec('FADE',v=>{const ms=200**(Math.max(0,Math.min(100,v))/100);return `${ms<10?ms.toFixed(1):Math.round(ms)} ms`;})][which];   // (SAMPLE: engines/fm/FmSample.h; D: LOOP's seam, the others' fades)
     case 13:return [spec('VOICES',null,['1','2','3','4','5','6','7','8','9']),spec('DETUNE'),spec('MIX',v=>pct(Math.floor((v+1)/2))),spec('DRIFT')][which];   // (UNISON: engines/fm/FmUnison.h)
+    case 14:return [spec('BITS',v=>String(1+Math.round(v/100*15))),spec('XOR'),spec('KEEP',v=>pct(Math.floor((v+1)/2))),spec('OFFSET')][which];   // (BITS: the wave as an N-bit code)
     default:return null;
   }
 }

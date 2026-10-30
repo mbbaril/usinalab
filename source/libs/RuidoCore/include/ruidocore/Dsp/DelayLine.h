@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -36,17 +34,8 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' Plaits `DelayLine`
-// (plaits/dsp/physical_modelling/delay_line.h, MIT licensed,
-// github.com/pichenettes/eurorack, downloaded and read directly - "nao
-// simplifique nada"/"quero fidelidade total", 2026-08-27). Backs
-// Dsp/PlaitsString.h's Karplus-Strong waveguide. A ring buffer with a
-// DECREASING write pointer (so `Read`'s modular arithmetic reads
-// "backwards in time" cleanly) plus three read strategies: linear
-// (`Read`), 4th-order Hermite (`ReadHermite`, needs the sample before
-// and two after - same technique this library's own WavetableEngine/
-// AnalogBassDrum already use elsewhere), and a one-tap allpass
-// (`Allpass`, used for the dispersion nonlinearity).
+// Fractionally addressed delay storage for waveguide processing.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 template <typename T, size_t kMaxDelay>
 class DelayLine {
 public:
@@ -97,4 +86,4 @@ private:
     size_t writePtr = 0;
 };
 
-} // namespace ruidocore
+} //

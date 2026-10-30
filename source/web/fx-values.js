@@ -13,9 +13,11 @@ export function fxValueFormatter(id) {
   if (id==='dly_time') return v=>v<1000?`${v<100?v.toFixed(1):String(Number(v.toFixed(1)))} ms`:`${Math.fround(Math.fround(v)/1000).toFixed(2)} s`;
   if (id==='dly_lowcut') return v=>v<=20.5?'OFF':`${roundNative(v)} Hz`;
   if (id==='dly_highcut') return v=>v>=19999?'OFF':`${Math.fround(Math.fround(v)/1000).toFixed(1)} kHz`;
-  if (['dly_out','dist_drive','dist_out','aux_return'].includes(id)) return v=>`${v.toFixed(1)} dB`;
+  if (['dly_out','dist_drive','dist_out','aux_return','fxf_out'].includes(id)) return v=>`${v.toFixed(1)} dB`;
+  if (id==='fxf_cutoff') return v=>v<1000?`${roundNative(v)} Hz`:`${Math.fround(Math.fround(v)/1000).toFixed(2)} kHz`;
+  if (['fxf_spread','fxf_follow'].includes(id)) return v=>{const p=roundNative(Math.fround(Math.fround(v)*100));return `${p>0?'+':''}${p} %`;};
   if (['dist_sym','dist_tone'].includes(id)) return v=>{const p=roundNative(Math.fround(Math.fround(v)*100));return `${p>0?'+':''}${p}`;};
-  if (/^(tex_(time|shape|feedback|drywet|reverb)|vap_(position|size|density|texture|drywet|spread|feedback|reverb)|dly_(feedback|wow|flutter|mix)|dist_mix|rev_amount)$/.test(id)) return v=>`${roundNative(Math.fround(Math.fround(v)*100))} %`;
+  if (/^(tex_(time|shape|feedback|drywet|reverb)|vap_(position|size|density|texture|drywet|spread|feedback|reverb)|dly_(feedback|wow|flutter|mix)|fxf_(reso|mix)|dist_mix|rev_amount)$/.test(id)) return v=>`${roundNative(Math.fround(Math.fround(v)*100))} %`;
   return null;
 }
 export const textureGroups = [

@@ -7,10 +7,10 @@
 namespace usina::seq {
 
 namespace {
-constexpr int kMaxStepsPerBlock = 64;                    // (a host's stall never fires a burst: the family's cap)
-constexpr double kResyncToleranceAt48k = 30.0;           // samples (the family's schedulers: a real host needs slack)
-constexpr int64_t kSeekCycle = 16384;                    // steps replayed silently after a jump (see process)
-} // namespace
+constexpr int kMaxStepsPerBlock = 64;                    // Cap event bursts after host stalls.
+constexpr double kResyncToleranceAt48k = 30.0;           // Scheduling slack in samples.
+constexpr int64_t kSeekCycle = 16384;                    // Steps replayed silently after a jump (see process)
+} // Namespace
 
 ruidocore::Pattern defaultPattern()
 {
@@ -35,13 +35,12 @@ ruidocore::Pattern defaultPattern()
 
 Player::Player()
 {
-    // Fixed storage is allocated once here, not on the audio thread or on the processor's host stack.
-    // Keep fixed event storage off host/test stacks; it is allocated once, never in process().
+    // Allocate fixed event storage once, off the audio thread and host stack.
     pending = std::make_unique<std::array<Pending, kMaxPending>>();
     chords = std::make_unique<std::array<ChordLane, kLanes>>();
     for (auto& s : slots) s = std::make_unique<Slot>();
     sequencer = std::make_unique<ruidocore::Sequencer>(defaultPattern());
-    fired.resize(kLanes * 16);                           // (tick() fills it in place: grown here, never on the audio thread)
+    fired.resize(kLanes * 16);                           // Tick() fills it in place: grown here, never on the audio thread
     for (auto& c : cursors) c.store(-1);
     for (auto& v : lanesOut) v.store(0.0f);
 }
@@ -78,7 +77,7 @@ bool Player::submitLane(int lane, const ruidocore::Part& part, const ChordLane* 
     for (auto& s : slots) {
         if (s->state.load(std::memory_order_acquire) != 0) continue;
         s->lane = lane;
-        s->part = part;                                  // (the copy: here, on the message thread)
+        s->part = part;                                  // The copy: here, on the message thread
         s->hasChords = noteSets != nullptr;
         if (noteSets) s->chords = *noteSets;
         ruidocore::ensureStepStorage(s->part);
@@ -99,12 +98,12 @@ void Player::collect()
 {
     for (auto& s : slots)
         if (s->state.load(std::memory_order_acquire) == 2) {
-            s->part = ruidocore::Part();                 // (the old lane freed here, never on the audio thread)
+            s->part = ruidocore::Part();                 // The old lane freed here, never on the audio thread
             s->state.store(0, std::memory_order_release);
         }
 }
 
-// the lanes that arrived, in the order they were sent
+// The lanes that arrived, in the order they were sent
 void Player::takeMail()
 {
     for (;;) {
@@ -119,18 +118,18 @@ void Player::takeMail()
     }
 }
 
-// a note event at an absolute time (samples since the start). A note-on of a note still sounding takes that note's
+// A note event at an absolute time (samples since the start). A note-on of a note still sounding takes that note's
 // pending note-off to the same moment, so the two always come in pairs and in order
 void Player::schedule(double at, bool on, int note, int velocity, bool musical, double musicalStart)
 {
     if (on)
         for (int i = 0; i < numPending; ++i)
             if (!(*pending)[(size_t)i].on && (*pending)[(size_t)i].note == note && (*pending)[(size_t)i].at > at) (*pending)[(size_t)i].at = at;
-    if (numPending >= kMaxPending) return;               // (fireStep makes room for both of a pair first)
+    if (numPending >= kMaxPending) return;               // FireStep makes room for both of a pair first
     (*pending)[(size_t)numPending++] = { at, on, note, velocity, musical, musicalStart };
 }
 
-// stop or jump: every note sounding ends now; what was still to start does not
+// Stop or jump: every note sounding ends now; what was still to start does not
 void Player::flushAll(Event* out, int maxOut, int& count)
 {
     for (int i = 0; i < numPending; ++i)
@@ -145,7 +144,7 @@ void Player::fireStep(const ruidocore::FiredStep& f, double stepStart, double st
     const auto& ev = f.event;
     if (isNoteLane(f.partIndex)) {
         if (mutes[(size_t)f.partIndex].load(std::memory_order_relaxed)) return;
-        // played as the step comes: its probability, its condition (never written back into the pattern)
+        // Played as the step comes: its probability, its condition (never written back into the pattern)
         if (ev.probability < 1.0f && std::uniform_real_distribution<float>(0.0f, 1.0f)(rng) >= ev.probability) return;
         if (!ruidocore::evaluateTrigCondition(ev.condition, sequencer->loopCountForPart(f.partIndex), false)) return;
         const float sw = part.swingPercent != ruidocore::kSwingInherit ? part.swingPercent : pattern.swingPercent;
@@ -182,10 +181,10 @@ int Player::process(int numSamples, const Transport& t, Event* out, int maxOut)
     takeMail();
     const int spb = stepsPerBeat.load();
     const float sw = swing.load();
-    sequencer->setPatternGlobals(120.0, spb, sw);        // (the grid and the swing; the tempo is the host's)
+    sequencer->setPatternGlobals(120.0, spb, sw);        // The grid and the swing; the tempo is the host's
 
     if (!t.playing) {
-        if (wasPlaying) {                                // (stopped: every note ends now, the lanes start over next time)
+        if (wasPlaying) {                                // Stopped: every note ends now, the lanes start over next time
             flushAll(out, maxOut, count);
             wasPlaying = false;
             for (auto& c : cursors) c.store(-1);
@@ -205,7 +204,7 @@ int Player::process(int numSamples, const Transport& t, Event* out, int maxOut)
             }
     previousBpm = bpm;
     const double stepSamples = sr * 60.0 / bpm / spb;
-    if (!wasPlaying) {                                   // (started: from the top, its grid from the host's position)
+    if (!wasPlaying) {                                   // Started: from the top, its grid from the host's position
         wasPlaying = true;
         blockStart = nextBoundary = 0.0;
         globalStep = 0;
@@ -215,27 +214,26 @@ int Player::process(int numSamples, const Transport& t, Event* out, int maxOut)
     }
     const double blockEnd = blockStart + numSamples;
 
-    // the grid from the host's beat position: followed while it runs on, recomputed at any discontinuity
+    // The grid from the host's beat position: followed while it runs on, recomputed at any discontinuity
     const bool ppqOk = t.ppqValid && std::isfinite(t.ppq) && std::fabs(t.ppq) < 1.0e12 && bpmOk;
     if (ppqOk) {
         const double samplesPerBeat = sr * 60.0 / bpm;
         const double stepBeats = 1.0 / spb;
         const double tolerance = kResyncToleranceAt48k * (sr / 48000.0) / samplesPerBeat;
         if (expectedPpq < 0.0 || std::fabs(t.ppq - expectedPpq) > tolerance) {
-            if (expectedPpq >= 0.0) flushAll(out, maxOut, count);   // (a jump, a loop: what sounds ends here)
+            if (expectedPpq >= 0.0) flushAll(out, maxOut, count);   // A jump, a loop: what sounds ends here
             const int64_t next = (int64_t)std::ceil(t.ppq / stepBeats - 1.0e-9);
             globalStep = next;
             const double candidate = blockStart + ((double)next * stepBeats - t.ppq) * samplesPerBeat;
             nextBoundary = std::isfinite(candidate) && candidate > blockStart - sr * 5.0 ? candidate : blockEnd;
-            // the lanes where the host's position puts them: from the top, then this many steps replayed silently
-            // (the same place gives the same lanes - a loop in the host plays the same bars; past kSeekCycle steps,
-            // 1024 bars of sixteenths, the position wraps)
+            // Seek by replaying steps silently from the start. Identical positions reproduce
+            // the same lane state; positions beyond kSeekCycle wrap at 1024 sixteenth-note bars.
             sequencer->resetCursors();
             for (int64_t i = 0, n = std::max<int64_t>(0, next) % kSeekCycle; i < n; ++i) sequencer->tick(fired);
         }
         expectedPpq = t.ppq + numSamples / sr * bpm / 60.0;
     } else {
-        expectedPpq = -1.0;                              // (no position: it runs on its own, and resyncs once there is one)
+        expectedPpq = -1.0;                              // No position: it runs on its own, and resyncs once there is one
     }
 
     for (int steps = 0; nextBoundary < blockEnd; ++steps) {
@@ -250,7 +248,7 @@ int Player::process(int numSamples, const Transport& t, Event* out, int maxOut)
     }
     for (int lane = 0; lane < kLanes; ++lane) cursors[(size_t)lane].store(sequencer->cursorForPart(lane));
 
-    // what falls in this block, in time order (a note-off before a note-on at the same sample)
+    // What falls in this block, in time order (a note-off before a note-on at the same sample)
     std::sort(pending->begin(), pending->begin() + numPending, [](const Pending& a, const Pending& b) {
         return a.at < b.at || (a.at == b.at && !a.on && b.on);
     });
@@ -284,4 +282,4 @@ void Player::setMuted(int lane, bool m)
 
 bool Player::muted(int lane) const { return lane >= 0 && lane < kLanes && mutes[(size_t)lane].load(); }
 
-} // namespace usina::seq
+} // Namespace usina::seq

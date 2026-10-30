@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,10 +29,8 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' stmlib `DCBlocker`
-// (stmlib/dsp/filter.h, MIT licensed, github.com/pichenettes/stmlib,
-// downloaded and read directly). A one-pole DC blocker:
-// y[n] = y[n-1]*pole + x[n] - x[n-1].
+// DcBlocker DSP implementation.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 class DcBlocker {
 public:
     void init(float polePosition) {
@@ -54,4 +50,4 @@ private:
     float x = 0.0f, y = 0.0f, pole = 0.999f;
 };
 
-} // namespace ruidocore
+} //

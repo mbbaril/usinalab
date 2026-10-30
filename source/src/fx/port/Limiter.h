@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Emilie Gillet's Eurorack firmware (https://github.com/pichenettes/eurorack), used under
-// the MIT licence. The upstream file it derives from: beads/dsp/limiter.h ("Mono and stereo limiter."), read at
-// eurorack f4cfa76 (D:/upstream/eurorack), ported line for line.
+// Ported line for line from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2014 Emilie Gillet.
 //
@@ -32,7 +30,7 @@
 // is upstream's limiter, operation for operation.
 #pragma once
 #include "Reverb.h"
-#include "StmlibDsp.h"
+#include "DspUtil.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -82,4 +80,4 @@ private:
     float attack_lp_ = 0.5f;
 };
 
-} // namespace usina::port
+} // Namespace usina::port

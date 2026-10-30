@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 // Stateful MIDI 1.0 byte parser: handles running status, real-time interleaving and fragmented messages.
 // SysEx is deliberately ignored; an untrusted peripheral cannot grow an unbounded allocation.
 export class MidiParser {

@@ -21,25 +21,11 @@ struct ModRuntime {
     std::uint8_t turingRegister = 0;
     std::mt19937 rng{std::random_device{}()};
     int lastSeenTriggerStep = -1; // edge-detects a trigger source changing - host-defined meaning
-    float lagState = 0.0f; // one-pole filter's last output, see applyModLag below
-    // Lock-to-lane-rhythm measurement (2026-09-01, see
-    // ModRateSource::LockedToLane's own comment). msSinceLastTrigger
-    // accumulates real elapsed ms every tick since the last
-    // SpecificLane fire; measuredIntervalMs is that accumulator's
-    // value at the MOMENT of the next fire (i.e. the real measured gap
-    // between two consecutive fires) - stays 0 until a second fire has
-    // actually happened, so the first trigger can't lock onto a bogus
-    // interval. Host-tick-owned (the host, not this shared engine,
-    // detects trigger edges and updates these - see
-    // `advanceModGenerator()`'s own `triggerEdge` parameter).
+    float lagState = 0.0f; // One-pole lag state and lane-rhythm interval measurements.
     double msSinceLastTrigger = 0.0;
     double measuredIntervalMs = 0.0;
 
-    // Deja Vu history (2026-09-01, ModGenerator::randomDejaVu's own
-    // comment) - a short ring buffer of past resampled random-family
-    // target values, indexed by step count so replaying "the same
-    // sequence as last cycle" means literally re-reading this same
-    // buffer at the same position, not a separate seeded-RNG scheme.
+    // Ring of prior random targets for repeatable short histories.
     static constexpr int kRandomHistoryLen = 16;
     std::array<float, kRandomHistoryLen> randomHistory{};
     int randomStepIndex = 0;
@@ -54,11 +40,7 @@ struct ModRuntime {
 // envelope) and by the stepped shapes when in One-Shot (resamples once
 // per hit instead of once per cycle).
 //
-// `externalValue` (2026-08-28) - only consumed when gen.shape ==
-// ModShape::Mirror, in which case it's returned directly (clamped
-// 0..1) instead of computing any curve at all. Defaulted to 0.0f so
-// every existing call site (every host that doesn't use Mirror)
-// compiles unchanged.
+// Mirror returns externalValue directly. Other shapes ignore this argument.
 float advanceModGenerator(const ModGenerator& gen, ModRuntime& rt, double deltaMs, bool triggerEdge,
                            float externalValue = 0.0f);
 
@@ -90,8 +72,8 @@ float applyModWavefold(float raw01, float foldAmount);
 // drives the MOD engine by calling advanceModGenerator() from whatever
 // periodic mechanism it already has (a 60Hz UI timer, an audio-thread
 // sample counter, etc.) - the original per-product forks this was
-// extracted from used a small always-running juce::Timer wrapper for
+// extracted from used a small always-running host framework::Timer wrapper for
 // this; that's a one-line thing for any host to reimplement in its own
 // framework, so it isn't duplicated here.
 
-} // namespace ruidocore
+} //

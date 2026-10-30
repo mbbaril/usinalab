@@ -7,18 +7,50 @@ records what came from where.
 
 ## Mutable Instruments (Émilie Gillet) — MIT
 
-Most of the DSP under `include/ruidocore/Dsp/` is ported from the
-Mutable Instruments Eurorack firmware
-(<https://github.com/pichenettes/eurorack>), which is **MIT licensed**.
-Nineteen of the twenty-two files there name the specific upstream source
-they were ported from, in a comment at the top of the file.
+Most of the DSP under `include/ruidocore/Dsp/` and several engines under
+`include/ruidocore/Synth/` are ported from the Mutable Instruments
+Eurorack firmware (<https://github.com/pichenettes/eurorack>, the Plaits
+module) and from stmlib (<https://github.com/pichenettes/stmlib>), both
+**MIT licensed**. MIT is compatible with the AGPL and the ports are
+distributed as part of this AGPL work. Each ported file keeps the
+upstream copyright and permission notice in its header, which points
+here for provenance. The upstream names stay out of the code: files,
+classes and constants use descriptive names.
 
-MIT is compatible with the AGPL and the port may be distributed as part
-of this AGPL work. MIT does, however, require that its copyright notice
-and permission notice be retained. **They are currently not present in
-those files** — only a prose credit naming the upstream file. That is an
-attribution gap to close, not a licence conflict: the fix is to add the
-upstream MIT header to each ported file.
+| RuidoCore file | Upstream source |
+|---|---|
+| `include/ruidocore/Dsp/AnalogBassDrum.h` | `plaits/dsp/drums/analog_bass_drum.h` |
+| `include/ruidocore/Dsp/AnalogHiHat.h` | `plaits/dsp/drums/hi_hat.h` |
+| `include/ruidocore/Dsp/AnalogSnareDrum.h` | `plaits/dsp/drums/analog_snare_drum.h` |
+| `include/ruidocore/Dsp/ClockedNoise.h` | `plaits/dsp/noise/clocked_noise.h`, `stmlib/dsp/polyblep.h` |
+| `include/ruidocore/Dsp/CombString.h` | `plaits/dsp/physical_modelling/string.h/.cc` |
+| `include/ruidocore/Dsp/DcBlocker.h` | `stmlib/dsp/filter.h` |
+| `include/ruidocore/Dsp/DecayEnvelope.h` | `plaits/dsp/envelope.h` |
+| `include/ruidocore/Dsp/DelayLine.h` | `plaits/dsp/physical_modelling/delay_line.h` |
+| `include/ruidocore/Dsp/Downsampler4x.h` | `plaits/dsp/downsampler/4x_downsampler.h`, `plaits/resources.cc` |
+| `include/ruidocore/Dsp/FmQuantizerTable.h`, `src/FmQuantizerTable.cpp` | `plaits/resources.cc` |
+| `include/ruidocore/Dsp/Limiter.h` | `stmlib/dsp/limiter.h` |
+| `include/ruidocore/Dsp/LowPassGate.h` | `plaits/dsp/envelope.h` (`opto*`: upstream's `vactrol_*`) |
+| `include/ruidocore/Dsp/Overdrive.h` | `plaits/dsp/fx/overdrive.h` |
+| `include/ruidocore/Dsp/Particle.h` | `plaits/dsp/noise/particle.h` |
+| `include/ruidocore/Dsp/Resonator.h` | `plaits/dsp/physical_modelling/resonator.h/.cc`, `plaits/resources.cc` |
+| `include/ruidocore/Dsp/ResonatorTables.h`, `src/ResonatorTables.cpp` | `plaits/resources.h/.cc` |
+| `include/ruidocore/Dsp/SimpleDiffuser.h` | `plaits/dsp/fx/diffuser.h` |
+| `include/ruidocore/Dsp/SoftClip.h` | `stmlib/dsp/dsp.h` |
+| `include/ruidocore/Dsp/SwarmVoice.h` | `plaits/dsp/engine/swarm_engine.h` |
+| `include/ruidocore/Dsp/WaveBankData.h`, `src/WaveBankData.cpp` | `plaits/resources.h/.cc` (the integrated waves) |
+| `include/ruidocore/Synth/BassDrumEngine.h` | `plaits/dsp/engine/bass_drum_engine.h/.cc`, `plaits/dsp/fx/overdrive.h` |
+| `include/ruidocore/Synth/FilteredNoiseEngine.h` | `plaits/dsp/engine/noise_engine.h/.cc` |
+| `include/ruidocore/Synth/FmEngine.h` | `plaits/dsp/engine/fm_engine.h/.cc`, `plaits/dsp/voice.cc` |
+| `include/ruidocore/Synth/HiHatEngine.h` | `plaits/dsp/engine/hi_hat_engine.h/.cc` |
+| `include/ruidocore/Synth/ModalEngine.h` | `plaits/dsp/engine/modal_engine.h/.cc`, `plaits/dsp/physical_modelling/modal_voice.h/.cc` |
+| `include/ruidocore/Synth/ParticleNoiseEngine.h` | `plaits/dsp/engine/particle_engine.h/.cc` |
+| `include/ruidocore/Synth/SnareDrumEngine.h` | `plaits/dsp/engine/snare_drum_engine.h/.cc` |
+| `include/ruidocore/Synth/StringEngine.h` | `plaits/dsp/engine/string_engine.h/.cc`, `plaits/dsp/physical_modelling/string_voice.h/.cc` |
+| `include/ruidocore/Synth/SwarmEngine.h` | `plaits/dsp/engine/swarm_engine.h/.cc` |
+| `include/ruidocore/Synth/WavetableEngine.h` | `plaits/dsp/voice.cc` |
+
+The upstream revision of each port was not recorded when it was read.
 
 The upstream notice is:
 

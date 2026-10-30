@@ -201,17 +201,8 @@ std::size_t Sequencer::tick(std::vector<FiredStep>& out) {
             if (!ev.enabled)
                 continue;
 
-            // Resolve the note HERE, once, for everything downstream
-            // (2026-09-16). A fired step always leaves the sequencer with
-            // an explicit note - the step's own, or its Part's baseNote -
-            // so no scheduler, MIDI writer or synthesis engine has to
-            // know that "unset" exists. This is the one playback choke
-            // point; resolving anywhere later would be a place to forget.
-            // Written INTO the caller's buffer rather than pushed as a new
-            // object: assigning over a slot that already exists reuses its
-            // StepEvent's `locks` storage instead of allocating a fresh
-            // vector for every hit, which is where most of the audio
-            // thread's allocations were coming from.
+            // Resolve inherited notes once when a step fires, without modifying the stored pattern.
+            // Assign into caller storage to reuse existing lock-vector capacity.
             if (fired == out.size())
                 out.emplace_back();
             FiredStep& slot = out[fired++];
@@ -225,4 +216,4 @@ std::size_t Sequencer::tick(std::vector<FiredStep>& out) {
     return fired;
 }
 
-} // namespace ruidocore
+} //

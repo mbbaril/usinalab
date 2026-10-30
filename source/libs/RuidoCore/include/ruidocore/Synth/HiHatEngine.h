@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -37,17 +35,13 @@
 
 namespace ruidocore {
 
-// Wraps Dsp/AnalogHiHat.h as a RuidoCore Engine - a faithful-effort port
-// of Mutable Instruments' Plaits `HiHatEngine`
-// (plaits/dsp/engine/hi_hat_engine.h/.cc, MIT licensed,
-// github.com/pichenettes/eurorack), third of Percutere's first batch of
-// dedicated percussion engines.
+// See THIRD_PARTY.md and the preserved license notice for source provenance.
 //
-// Knob mapping confirmed against the official Plaits manual: harmonics
+// Knob mapping confirmed against the official reference manual: harmonics
 // -> noisiness ("balance of the metallic and filtered noise"), timbre
 // -> tone ("high-pass filter cutoff"), morph -> decay ("decay time").
 //
-// Real Plaits' own HiHatEngine renders TWO differently-configured HiHat
+// reference HiHatEngine renders TWO differently-configured HiHat
 // instances in parallel (`hi_hat_1_`: SquareNoise/SwingVCA/resonant, to
 // `out`; `hi_hat_2_`: RingModNoise/LinearVCA/two-stage-envelope, to
 // `aux`) - this pass only ports the first (`out`) configuration;
@@ -95,10 +89,7 @@ public:
         const float modulatedHarmonics = std::clamp(parameters.harmonics + parameters.harmonicsEnvAmount * envValue, 0.0f, 1.0f);
         const float modulatedTimbre = std::clamp(parameters.timbre + parameters.timbreEnvAmount * envValue, 0.0f, 1.0f);
         const float modulatedMorph = std::clamp(parameters.morph + parameters.morphEnvAmount * envValue, 0.0f, 1.0f);
-        // Widened on the POSITIVE side (2026-08-28, "o de level ainda parece
-        // inefetivo" - the old +-1x symmetric range only reached +6dB at max
-        // positive amount, easily masked by this engine's own natural decay;
-        // negative already reaches full silence at max amount so stays as-is).
+        // Envelope depth is bipolar; positive depth uses the extended gain range.
         const float levelEnvGain = parameters.levelEnvAmount >= 0.0f
                                         ? std::clamp(1.0f + parameters.levelEnvAmount * envValue * 3.0f, 0.0f, 4.0f)
                                         : std::clamp(1.0f + parameters.levelEnvAmount * envValue, 0.0f, 2.0f);
@@ -143,4 +134,4 @@ private:
     bool gateOpen = false;
 };
 
-} // namespace ruidocore
+} //

@@ -38,22 +38,28 @@ export function operatorParameter(d) {
 export function voiceFilterState(type,on) {
   type=((type%18)+18)%18;
   const casc=type===11,cmos=type>=14,saturating=[2,3,6,11,12,13].includes(type);
-  return {type,casc,cmos,saturating,dim:!on,driveDim:!on||!saturating,special:casc?['hp_cut','hp_peak','casc_fb','hp_eg2_int','casc_out','casc_vca','casc_hot']:cmos?['cmos_life']:[]};
+  return {type,casc,cmos,saturating,dim:!on,driveDim:!on||!saturating,special:casc?['hp_cut','hp_peak','casc_fb','hp_eg2_int','casc_out','casc_vca','casc_source','casc_hot']:cmos?['cmos_life']:[]};
 }
 export function filterParameter(d,state) {
   if(/^eg[12]_(atk|dec|sus|rel|curve|atk_curve|rel_curve|mode|retrig)$/.test(d.id))return envelopeParameter(d);
-  const captions={out_gain:'OUT GAIN',lpg_mode:'LPG',lpg_decay:'DECAY',lpg_color:'COLOR',filter:'FILTER',filter_type:'TYPE',cutoff:'CUTOFF',reso:'RESO',flt_drive:'DRIVE',eg2_int:'EG2 INT',key_low:'KEY LOW',key_high:'KEY HIGH',key_center:'KEY CTR',hp_cut:'HP CUT',hp_peak:'HP PEAK',casc_fb:'CASC FB',hp_eg2_int:'HP EG2',casc_out:'CASC OUT',casc_vca:'CASC VCA',casc_hot:'CASC HOT',cmos_life:'CMOS LIFE'};
+  const captions={out_gain:'OUT GAIN',lpg_mode:'LPG',lpg_decay:'DECAY',lpg_color:'COLOR',filter:'FILTER',filter_type:'TYPE',cutoff:'CUTOFF',reso:'RESO',flt_drive:'DRIVE',eg2_int:'EG2 INT',key_low:'KEY LOW',key_high:'KEY HIGH',key_center:'KEY CTR',hp_cut:'HP CUT',hp_peak:'HP PEAK',casc_fb:'CASC FB',hp_eg2_int:'HP EG2',casc_out:'CASC OUT',casc_vca:'CASC VCA',casc_source:'VCA SOURCE',casc_hot:'CASC HOT',cmos_life:'CMOS LIFE',lpg_source:'SOURCE',lpg_r_mode:'RIGHT',lpg_r_source:'R SOURCE',lpg_r_decay:'R DECAY',f2_route:'ROUTE',f2_type:'TYPE',f2_cutoff:'CUTOFF',f2_reso:'RESO',f2_drive:'DRIVE',f2_eg2_int:'EG2 INT',f2_key:'KEY',f2_mix:'MIX'};
   const result={...d,uiCaption:captions[d.id]??d.uiCaption,dim:d.id==='filter'?false:d.id==='flt_drive'?state.driveDim:state.dim};
-  if(d.id==='casc_vca')result.choices=['GATE','EG2','ENV'];
-  if(d.id==='lpg_mode')result.choices=['OFF','PING','EG2'];
+  if(d.id==='casc_vca')result.choices=['GATE','EG2','ENV','SOURCE'];
+  if(d.id==='lpg_mode')result.choices=['OFF','PING','EG2','SOURCE'];
+  if(d.id==='lpg_r_mode')result.choices=['R SAME','R PING','R EG2','R SOURCE'];
+  if(d.id==='lpg_r_decay')result.text=v=>`${v>0?'+':''}${v}`;
+  if(d.id==='f2_route')result.choices=['OFF','SERIES','PARALLEL','STEREO'];   // FILTER 2: dim while OFF
+  if(/^f2_/.test(d.id))result.dim=d.id!=='f2_route'&&!state.f2on;
+  if(['f2_reso','f2_mix'].includes(d.id))result.text=pct;
+  if(d.id==='f2_key')result.text=signedPct;
   if(['filter','lofi','casc_hot'].includes(d.id))result.compactToggle=true;
   if(['lpg_decay','lpg_color'].includes(d.id))result.text=pct;
-  if(['out_gain','lpg_mode','lpg_decay','lpg_color','lofi'].includes(d.id))result.dim=false;
-  if(d.id==='flt_drive')result.text=v=>`x${nativeFixed(2**(3*v/100),2)}`;
+  if(['out_gain','lpg_mode','lpg_decay','lpg_color','lofi','lpg_source','lpg_r_mode','lpg_r_source','lpg_r_decay'].includes(d.id))result.dim=false;
+  if(['flt_drive','f2_drive'].includes(d.id))result.text=v=>`x${nativeFixed(2**(3*v/100),2)}`;
   if(['casc_out','out_gain'].includes(d.id))result.text=v=>`+${nativeFixed(.75*v,2)} dB`;
-  if(['cutoff','hp_cut'].includes(d.id))result.text=v=>{const hz=6.489*(23680/6.489)**(v/1000);return hz<1000?`${hz<100?hz.toFixed(1):nativeFixed(hz,3).replace(/\.?0+$/,'')} Hz`:`${nativeFixed(hz/1000,2)} kHz`;};
+  if(['cutoff','hp_cut','f2_cutoff'].includes(d.id))result.text=v=>{const hz=6.489*(23680/6.489)**(v/1000);return hz<1000?`${hz<100?hz.toFixed(1):nativeFixed(hz,3).replace(/\.?0+$/,'')} Hz`:`${nativeFixed(hz/1000,2)} kHz`;};
   if(['key_low','key_high','casc_fb'].includes(d.id))result.text=signedPct;
   if(['reso','hp_peak','cmos_life'].includes(d.id))result.text=pct;
-  if(['eg2_int','hp_eg2_int'].includes(d.id))result.text=v=>`${v>0?'+':''}${nativeFixed(v/16,1)} st`;
+  if(['eg2_int','hp_eg2_int','f2_eg2_int'].includes(d.id))result.text=v=>`${v>0?'+':''}${nativeFixed(v/16,1)} st`;
   return result;
 }

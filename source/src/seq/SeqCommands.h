@@ -25,7 +25,7 @@ inline int conditionIndex(const ruidocore::TrigCondition& c) {
     if(c.type==ruidocore::TrigConditionType::Ratio)for(int i=1;i<10;++i)if(c.ratioK==conditionK[i]&&c.ratioN==conditionN[i])return i;
     return 0;
 }
-// Extracted from SeqPanel's existing commands. This is an edit-time operation, never called by render/processBlock.
+// Edit-time commands; never call from render or processBlock.
 inline void command(ruidocore::Pattern& pattern,int lane,Command command,int pulses,int rotation,float amount,uint32_t& seed) {
     if(lane<0||lane>=(int)pattern.parts.size())return;
     auto& part=pattern.parts[(size_t)lane];if(part.steps.empty())return;const int n=std::clamp(part.length,1,(int)part.steps.size());

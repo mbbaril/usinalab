@@ -106,9 +106,27 @@ Patch Patch::fromArray(const int* v)
         l.polarity = x(lb + 4);
         l.retrig = x(lb + 5);
     }
-    p.lpgMode = std::clamp(x(XV_LPGMODE), 0, 2);       // the voice's LPG (21/10)
+    p.lpgMode = std::clamp(x(XV_LPGMODE), 0, 3);       // the voice's LPG (3 SOURCE)
     p.lpgDecay = std::clamp(x(XV_LPGDECAY), 0, 100);
     p.lpgColor = std::clamp(x(XV_LPGCOLOR), 0, 100);
+    p.spread = std::clamp(x(XV_SPREAD), 0, 2);           // the voices in stereo
+    p.width = std::clamp(x(XV_WIDTH), 0, 100);
+    p.pan = std::clamp(x(XV_PAN), -100, 100);
+    for (int k = 0; k < 6; ++k) p.op[(size_t)k].width = std::clamp(x(XV_O1WIDTH + k), 0, 100);   // (stereo, stage 2)
+    p.fltOffset = std::clamp(x(XV_FLTOFF), -48, 48);
+    p.lpgSrc = std::clamp(x(XV_LPGSRC), 0, 43);          // the LPG in stereo and its sources
+    p.lpgRMode = std::clamp(x(XV_LPGRMODE), 0, 3);
+    p.lpgRSrc = std::clamp(x(XV_LPGRSRC), 0, 43);
+    p.lpgRDecay = std::clamp(x(XV_LPGRDEC), -100, 100);
+    p.cascSrc = std::clamp(x(XV_CASCSRC), 0, 43);
+    p.f2Route = std::clamp(x(XV_F2ROUTE), 0, 3);
+    p.f2Type = std::clamp(x(XV_F2TYPE), 0, 16);
+    p.f2Cut = std::clamp(x(XV_F2CUT), 0, 1000);
+    p.f2Reso = std::clamp(x(XV_F2RESO), 0, 100);
+    p.f2Drive = std::clamp(x(XV_F2DRIVE), 0, 100);
+    p.f2Eg2 = std::clamp(x(XV_F2EG2), -2272, 2272);
+    p.f2Key = std::clamp(x(XV_F2KEY), -200, 200);
+    p.f2Mix = std::clamp(x(XV_F2MIX), 0, 100);
     for (int k = 0; k < 6; ++k) p.op[(size_t)k].rateKey = std::clamp(x(XV_O1RATEKEY + k), 0, 100);
     for (int k = 0; k < 6; ++k) p.op[(size_t)k].damp = std::clamp(x(XV_O1DAMP + k), 0, 100);
     for (int k = 0; k < 6; ++k) {

@@ -2,7 +2,7 @@
 #include "Texture.h"
 #include "dsp/Resampler.h"
 #include "dsp/Zeroed.h"
-#ifdef _MSC_VER                                          // (the port's warnings are upstream's: kept as written)
+#ifdef _MSC_VER                                          // The port's warnings are upstream's: kept as written
 #pragma warning(push, 0)
 #endif
 #include "fx/texture/dsp/processor.h"
@@ -22,22 +22,22 @@
 namespace usina::fx {
 
 namespace tx = usina_texture;
-namespace stm = usina_stmlib;
+namespace stm = usina_dsputil;
 
 namespace {
-// The module's processor and gain control are globals there: made in zeroed memory (dsp/Zeroed.h, which says why)
+// Construct DSP objects in zeroed storage; see dsp/Zeroed.h.
 using usina::Zeroed;
 using usina::makeZeroed;
 using usina::rezero;
 
-constexpr int kBlockRate = 4000;                         // (beads.cc: the codec's block rate)
-constexpr int kChunk = 512;                              // host samples handled at once (bounds every queue)
+constexpr int kBlockRate = 4000;                         // Control block rate.
+constexpr int kChunk = 512;                              // Host samples handled at once (bounds every queue)
 constexpr double kModuleRates[] = { 24000.0, 32000.0, 48000.0 };
 
 enum Pot { kTime, kSize, kShape, kPitch, kTimeAmt, kSizeAmt, kShapeAmt, kPitchAmt, kDensity, kFeedback, kDryWet,
            kReverb, kNumPots };
 
-// stereo frames and the SEED gate, first in first out; linear, compacted when the end is reached
+// Stereo frames and the SEED gate, first in first out; linear, compacted when the end is reached
 struct Fifo {
     std::vector<float> l, r;
     std::vector<uint8_t> g;
@@ -58,7 +58,7 @@ struct Fifo {
             std::copy(g.begin() + head, g.begin() + head + size, g.begin());
             head = 0;
         }
-        if (size >= (int)l.size()) return;              // (full: cannot happen with the sizes prepared)
+        if (size >= (int)l.size()) return;              // Full: cannot happen with the sizes prepared
         l[(size_t)(head + size)] = a;
         r[(size_t)(head + size)] = b;
         g[(size_t)(head + size)] = gate ? 1 : 0;
@@ -72,17 +72,17 @@ struct Fifo {
     }
 };
 
-// one module rate: the converters to and from the host's (or none: the same rate)
+// One module rate: the converters to and from the host's (or none: the same rate)
 struct RatePath {
     double rate = 48000.0;
     bool direct = true;
-    usina::Resampler down, up;                           // host -> module, module -> host
-    usina::Resampler twinDown, twinUp;                   // (the dry's twin: the same pair, no module between)
-    int prefill = 0;                                     // module samples of silence ahead of the output
-    double latencyHost = 0.0;                            // (whole host samples)
-    double upStart = 0.0;                                // the way back's first position (module samples, <= 0)
+    usina::Resampler down, up;                           // Host -> module, module -> host
+    usina::Resampler twinDown, twinUp;                   // The dry's twin: the same pair, no module between
+    int prefill = 0;                                     // Module samples of silence ahead of the output
+    double latencyHost = 0.0;                            // Whole host samples
+    double upStart = 0.0;                                // The way back's first position (module samples, <= 0)
 };
-} // namespace
+} // Namespace
 
 struct Texture::Impl {
     double hostRate = 48000.0;
@@ -91,7 +91,7 @@ struct Texture::Impl {
     Zeroed<tx::Processor> processor;
     Zeroed<tx::GainControl> gainControl;
     tx::PotChannel pots[kNumPots];
-    uint32_t rng = 0x21;                                 // (the processor's own random generator: stmlib's seed)
+    uint32_t rng = 0x21;                                 // Deterministic DSP random seed.
     stm::GateFlags previousSeed = stm::GATE_FLAG_LOW;
 
     RatePath paths[3];
@@ -100,11 +100,11 @@ struct Texture::Impl {
     bool mono = false;
     int block = 12;
 
-    Fifo inQ, outQ;                                      // at the module's rate
+    Fifo inQ, outQ;                                      // At the module's rate
     std::vector<uint8_t> gateRing = std::vector<uint8_t>(1 << 16);
     int64_t hostWritten = 0, moduleIn = 0;
     std::vector<float> tl = std::vector<float>(4 * kChunk), tr = std::vector<float>(4 * kChunk);
-    std::vector<float> twl = std::vector<float>(4 * kChunk), twr = std::vector<float>(4 * kChunk);   // (the twin's)
+    std::vector<float> twl = std::vector<float>(4 * kChunk), twr = std::vector<float>(4 * kChunk);   // The twin's
 
     bool active = false;
     float fade = 0.0f, fadeOnOff = 0.0f, fadeSwitch = 0.0f;
@@ -125,14 +125,13 @@ struct Texture::Impl {
                 p.prefill = blk;
                 p.latencyHost = blk;
             } else {
-                // minimum phase (28/10; the user: the delay when playing - dsp/Resampler.h): no half-width to wait,
-                // only the twins' small group delays (measured: tests/TextureTest LATENCY)
+                // Minimum-phase conversion avoids lookahead; matched converters retain small group delays.
                 p.down.prepare(fs, p.rate, kChunk, true);
                 const int moduleChunk = (int)std::ceil(kChunk * p.rate / fs) + 2 * blk + 8;
                 p.up.prepare(p.rate, fs, moduleChunk + 4096, true);
                 p.twinDown.prepare(fs, p.rate, kChunk, true);
                 p.twinUp.prepare(p.rate, fs, moduleChunk + 4096, true);
-                // the output must never wait: the converters' waits and one block ahead (module samples). The signal
+                // The output must never wait: the converters' waits and one block ahead (module samples). The signal
                 // is late by more than that by what the converters delay beyond their wait (host samples); the way
                 // back starts a fraction of a sample early so that the whole delay is whole host samples
                 p.prefill = (int)std::ceil(p.up.wait() + blk + p.down.wait() * p.rate / fs) + 2;
@@ -159,14 +158,14 @@ struct Texture::Impl {
 
     static uint16_t raw(float v) { return (uint16_t)std::lround(std::clamp(v, 0.0f, 1.0f) * 65535.0f); }
 
-    void readPots(const Texture::Knobs& k)               // (cv_reader.Read: every pot, once a block)
+    void readPots(const Texture::Knobs& k)               // Cv_reader.Read: every pot, once a block
     {
         const float v[kNumPots] = { k.time, k.size, k.shape, k.pitch, k.timeAmt, k.sizeAmt, k.shapeAmt, k.pitchAmt,
                                     k.density, k.feedback, k.dryWet, k.reverb };
         for (int i = 0; i < kNumPots; ++i) pots[i].Process(raw(v[i]));
     }
 
-    // the streams aligned again at a (new) module rate: queues emptied, the output's lead of silence put back
+    // The streams aligned again at a (new) module rate: queues emptied, the output's lead of silence put back
     void restartStreams()
     {
         const int index = media == Texture::kDirtyTape ? 0 : (media == Texture::kVintage ? 1 : 2);
@@ -192,8 +191,8 @@ struct Texture::Impl {
         }
     }
 
-    // turned on: empty, its knobs where they are, at its media (beads.cc Init and ConfigureAndStartCodec, without
-    // the codec's restart silence - the hardware's, not the processor's). Made anew in zeroed memory, as at power-up
+    // Reconstruct in zeroed storage with settled controls and the selected media.
+    // Do not include hardware codec restart silence in processor initialization.
     void start(const Texture::Knobs& k)
     {
         rezero(processor);
@@ -208,17 +207,17 @@ struct Texture::Impl {
             processor->Configure(tx::Processor::Media(media), mono);
         }
         gainControl->Init(processor->sample_rate(), clipping(media), true);
-        for (int i = 0; i < kNumPots; ++i) {             // (cv_reader.cc Init: the laws, the smoothing, TIME's hysteresis)
+        for (int i = 0; i < kNumPots; ++i) {             // Initialize control laws, smoothing and TIME hysteresis.
             const auto law = i >= kTimeAmt && i <= kPitchAmt ? tx::PotChannel::LAW_ATTENUVERTER
                                                              : (i == kPitch ? tx::PotChannel::LAW_DETUNE : tx::PotChannel::LAW_NORMAL);
             pots[i].Init(law, 0.05f, i == kTime ? 0.001f : 0.0f);
         }
-        for (int j = 0; j < 300; ++j) readPots(k);       // (settled where the knobs are: the module's are, at power-up)
+        for (int j = 0; j < 300; ++j) readPots(k);       // Settled where the knobs are: the module's are, at power-up
         previousSeed = stm::GATE_FLAG_LOW;
         restartStreams();
     }
 
-    // the media or mono changed (faded out first): the module's Configure, its gain control told, the new rate
+    // The media or mono changed (faded out first): the module's Configure, its gain control told, the new rate
     void reconfigure(const Texture::Knobs& k)
     {
         media = std::clamp(k.media, 0, (int)Texture::kNumMedia - 1);
@@ -231,7 +230,7 @@ struct Texture::Impl {
         restartStreams();
     }
 
-    // one block of the module (beads.cc Process): the knobs, the gain control, the processor, the clamp
+    // Process one block: controls, input gain, DSP and codec-range clamp.
     void runBlock(const Texture::Knobs& k)
     {
         stm::Random::Scope scope(&rng);
@@ -272,7 +271,7 @@ struct Texture::Impl {
         m.reverb_amount = mix(kReverb);
         m.output_gate = false;
 
-        tx::SeedButtonState button = tx::SEED_BUTTON_STATE_LOCKED;   // (the module's default: latched)
+        tx::SeedButtonState button = tx::SEED_BUTTON_STATE_LOCKED;   // The module's default: latched
         const stm::GateFlags* seedInput = nullptr;
         switch (k.seedMode) {
             case Texture::kSeedNotes: button = tx::SEED_BUTTON_STATE_OFF; seedInput = seed; break;
@@ -281,7 +280,7 @@ struct Texture::Impl {
             default: break;
         }
         processor->Process(button, seedInput, freeze, d, p, m, fin, fout, (size_t)n);
-        for (int i = 0; i < n; ++i) {                    // (the codec takes -1 .. 0.999999)
+        for (int i = 0; i < n; ++i) {                    // The codec takes -1 .. 0.999999
             outQ.push(std::clamp(fout[i].l, -1.0f, 0.999999f), std::clamp(fout[i].r, -1.0f, 0.999999f), false);
         }
     }
@@ -334,7 +333,7 @@ struct Texture::Impl {
             r[i] += (tr[(size_t)i] - r[i]) * fade;
         }
         if (fade <= 0.0f) {
-            if (change && on) reconfigure(k);            // (faded to the plain voices: switch, then fade back in)
+            if (change && on) reconfigure(k);            // Faded to the plain voices: switch, then fade back in
             else if (!on) active = false;
         }
     }
@@ -355,7 +354,7 @@ void Texture::process(float* l, float* r, int n, const Knobs& k, const bool* gat
 {
     auto& s = *impl;
     if (!s.active) {
-        if (!on) return;                                 // (off: the voices untouched, bit for bit)
+        if (!on) return;                                 // Off: the voices untouched, bit for bit
         s.start(k);
         s.active = true;
     }
@@ -370,14 +369,13 @@ bool Texture::active() const { return impl->active; }
 
 int Texture::latencySamples() const { return (int)std::lround(impl->path->latencyHost); }
 
-// the dry's twin (28/10): what a bus mixes its dry with must be filtered as the texture's own path filters (the
-// converters' minimum-phase twins are not a plain delay up the band: measured, a 50 % MIX lost 2-3 dB at 9 kHz).
-// The dry goes down and up through the same pair, the module's place left empty, aligned as the main path: its
-// output is the dry exactly as the texture's DRY/WET at 0 gives it, latencySamples() later (the module's gain aside)
+// Run dry audio through matched minimum-phase converters and align it with the wet path.
+// A pure delay cannot match their frequency-dependent phase. The result matches
+// DRY/WET at zero, excluding processor gain.
 bool Texture::dryTwin(float* l, float* r, int n)
 {
     auto& im = *impl;
-    if (!im.active || im.path->direct) return false;     // (the same rate: the texture is a plain delay, matched as one)
+    if (!im.active || im.path->direct) return false;     // The same rate: the texture is a plain delay, matched as one
     auto& p = *im.path;
     for (int i = 0; i < n;) {
         const int c = std::min(n - i, kChunk);
@@ -387,10 +385,10 @@ bool Texture::dryTwin(float* l, float* r, int n)
         p.twinUp.push(im.twl.data(), im.twr.data(), a);
         const int got = std::min(p.twinUp.available(), c);
         p.twinUp.pull(l + i, r + i, got);
-        for (int j = got; j < c; ++j) l[i + j] = r[i + j] = 0.0f;   // (never: the lead covers it)
+        for (int j = got; j < c; ++j) l[i + j] = r[i + j] = 0.0f;   // Never: the lead covers it
         i += c;
     }
     return true;
 }
 
-} // namespace usina::fx
+} // Namespace usina::fx

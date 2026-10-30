@@ -43,17 +43,37 @@ export function createUserPerformance({normalized,setNormalized,param,setParam,l
   }
   return {press,release,held,tapText,tap,cancel(){for(const index of [...held.keys()])release(index);}};
 }
+export const userPadBehavior=spec=>!spec?'':spec.ids||spec.run==='delayFreeze'||spec.run==='vaporFreeze'?'hold':spec.run?.startsWith('tap')?'tap':'action';
+export const userPadGroups=Object.freeze([
+  {name:'TAP',key:'tap',indices:[0,1,2,3]},
+  {name:'TIMBRES',key:'presets',indices:[5,6,7]},
+  {name:'FREEZE',key:'freeze',indices:[8,9,10]},
+  {name:'FILTRO',key:'filter',indices:[12,13,14]},
+  {name:'MACROS · SEGURE E SOLTE',key:'macros',indices:Array.from({length:32},(_,i)=>i+16)},
+  {name:'EFEITOS · THROWS',key:'throws',indices:[48,49,50,51,52]},
+]);
 export function renderUserPads({root,el,performance,pulse}){
-  root.append(el('p','perform-note','USER do plugin: TAPs e presets por toque; freezes, macros e throws enquanto segurados. Ao soltar, os controles momentâneos voltam ao valor anterior.'));
+  root.append(el('p','perform-note','TAP e TOQUE disparam ações. SEGURE aplica; solte para retornar ao valor anterior.'));
   const headers=el('div','cabine-headers');for(let i=0;i<8;++i)headers.append(el('span','',String(i+1)));root.append(headers);
-  const grid=el('div','cabine-grid');grid.setAttribute('aria-label','CABINE USER');const pointers=new Map(),owners=new Map(),pads=[];
-  function refresh(){pads.forEach((pad,i)=>{const on=performance.held.has(i);pad.classList.toggle('active',on);pad.setAttribute('aria-pressed',on);const spec=userPadAt(i);if(i<4&&spec)pad.textContent=spec.name+(performance.tapText[i]?` · ${performance.tapText[i]}`:'');});}
+  const grid=el('div','cabine-grid'),deck=el('div','cabine-user-deck');grid.setAttribute('aria-label','CABINE USER');deck.setAttribute('aria-label','USER por grupos');const pointers=new Map(),owners=new Map(),pads=[];
+  let grouped=true;try{grouped=localStorage.getItem('usina.cabine.user-layout')!=='grid';}catch{}
+  function caption(i,spec){if(!grouped)return spec.name;if(i<4)return spec.name.replace('TAP ','');if(i>=8&&i<=10)return spec.name.replace('FREEZE ','');if(i>=16&&i<48)return `${((i%8)+1)*12.5}%`;return spec.name;}
+  function refresh(){pads.forEach((pad,i)=>{const on=performance.held.has(i);pad.classList.toggle('active',on);pad.setAttribute('aria-pressed',on);const spec=userPadAt(i),behavior=userPadBehavior(spec);pad.dataset.behavior=behavior;pad.dataset.gestureHint=behavior==='hold'?(on?'SOLTE ↶':'SEGURE'):behavior==='tap'?'TAP':behavior==='action'?'TOQUE':'';if(spec)pad.textContent=caption(i,spec)+(i<4&&performance.tapText[i]?` · ${performance.tapText[i]}`:'');});}
   function end(id){const index=pointers.get(id);if(index===undefined)return;pointers.delete(id);owners.delete(index);performance.release(index);refresh();}
   for(let i=0;i<64;++i){const spec=userPadAt(i),pad=el('button','cabine-pad cabine-user',spec?.name||'—');pad.dataset.pad=i;pad.disabled=!spec;pad.style.touchAction='none';pad.style.setProperty('--pad-color',spec?.color||'#292929');pad.setAttribute('aria-label',spec?.name||'Vazio');
+    if(spec){const momentary=userPadBehavior(spec)==='hold';pad.title=momentary?'Segure para aplicar; solte para retornar.':'Ação por toque.';pad.setAttribute('aria-label',`${spec.name}. ${pad.title}`);}
     pad.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0||owners.has(i))return;e.preventDefault();pad.setPointerCapture(e.pointerId);pointers.set(e.pointerId,i);owners.set(i,e.pointerId);pulse();performance.press(i);refresh();};
     pad.onpointerup=pad.onpointercancel=pad.onlostpointercapture=e=>end(e.pointerId);
     pad.onkeydown=e=>{if((e.code==='Space'||e.code==='Enter')&&!e.repeat){e.preventDefault();if(owners.has(i))return;pointers.set(`key-${i}`,i);owners.set(i,`key-${i}`);pulse();performance.press(i);refresh();}};
     pad.onkeyup=e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();end(`key-${i}`);}};pads.push(pad);grid.append(pad);
   }
-  root.append(grid);root.refreshCabine=refresh;root.cancelGestures=()=>{pointers.clear();owners.clear();performance.cancel();refresh();};refresh();
+  const cancel=()=>{pointers.clear();owners.clear();performance.cancel();refresh();};
+  const views=el('div','cabine-user-views'),panels=el('button','play-toggle','GRUPOS'),matrix=el('button','play-toggle','GRADE 8×8');views.setAttribute('role','group');views.setAttribute('aria-label','Apresentação de USER');views.append(panels,matrix);root.querySelector('.cabine-tools').append(views);
+  function layout(next){
+    cancel();grouped=next;grid.hidden=grouped;deck.hidden=!grouped;headers.hidden=grouped;panels.setAttribute('aria-pressed',grouped);matrix.setAttribute('aria-pressed',!grouped);
+    if(grouped){deck.replaceChildren();for(const group of userPadGroups){const section=el('section',`cabine-user-group user-group-${group.key}`),heading=el('h3','',group.name),body=el('div','cabine-user-actions');section.append(heading,body);if(group.key==='macros'){for(let m=0;m<4;m++){const row=el('div','cabine-user-macro-row');row.append(el('span','',`MACRO ${m+1}`));for(let k=0;k<8;k++)row.append(pads[16+m*8+k]);body.append(row);}}else group.indices.forEach(i=>body.append(pads[i]));deck.append(section);}}
+    else pads.forEach(pad=>grid.append(pad));
+    try{localStorage.setItem('usina.cabine.user-layout',grouped?'groups':'grid');}catch{}refresh();
+  }
+  panels.onclick=()=>layout(true);matrix.onclick=()=>layout(false);root.append(grid,deck);root.refreshCabine=refresh;root.cancelGestures=cancel;layout(grouped);
 }

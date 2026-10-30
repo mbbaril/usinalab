@@ -57,4 +57,4 @@ inline void applyAccentSteal(std::vector<StepEvent>& steps, int length, float am
     }
 }
 
-} // namespace ruidocore
+} //

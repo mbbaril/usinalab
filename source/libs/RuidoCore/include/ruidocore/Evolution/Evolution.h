@@ -43,4 +43,4 @@ private:
     bool frozen = false;
 };
 
-} // namespace ruidocore
+} //

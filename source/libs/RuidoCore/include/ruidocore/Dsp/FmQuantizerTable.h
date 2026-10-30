@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,26 +29,19 @@
 
 namespace ruidocore {
 
-// 130-entry lookup table mapping a 0..1 "harmonics" position to a
-// semitone offset for the FM modulator ratio, ported verbatim from
-// Mutable Instruments' Plaits (plaits/resources.cc,
-// lut_fm_frequency_quantizer - MIT licensed,
-// github.com/pichenettes/eurorack, read for this library's own synth-
-// engine research, see docs/SYNTH_ENGINE_RESEARCH.md). Copied directly
-// rather than independently reimplemented, per the user's own stated
-// preference for fidelity to the Mutable modules.
+// 130-entry lookup mapping normalized harmonics to a semitone modulation-ratio offset.
 //
 // Snapping the modulator ratio to musically-curated semitone steps
 // (rather than a raw continuous multiplier) is what makes FM harmonics
 // land on recognizable harmonic/inharmonic relationships instead of
 // sounding like arbitrary detuning - see FmQuantizerTable.cpp's own
 // header for the interpolation convention this table is read with
-// (stmlib::Interpolate: index = harmonics01 * 128, linear-interpolated
+// (the reference Interpolate: index = harmonics01 * 128, linear-interpolated
 // between the two nearest entries).
 extern const float kFmFrequencyQuantizerTable[130];
 
 // index01: 0..1. Returns a semitone OFFSET (added to the carrier's own
-// note number to get the modulator's note number) - matches Plaits' own
+// note number to get the modulator's note number) - matches reference
 // `Interpolate(lut_fm_frequency_quantizer, harmonics, 128.0f)` call
 // exactly.
 inline float fmFrequencyQuantizerSemitones(float index01) {
@@ -66,4 +57,4 @@ inline float fmFrequencyQuantizerSemitones(float index01) {
     return a + (b - a) * indexFractional;
 }
 
-} // namespace ruidocore
+} //

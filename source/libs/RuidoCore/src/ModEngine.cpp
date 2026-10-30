@@ -8,17 +8,7 @@ namespace ruidocore {
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
-// Floor for any rise/fall/cycle time, in milliseconds. Deliberately NOT
-// 1.0ms the way the original per-hardware-product forks of this engine
-// used - those had no reason to go faster than a human ear needs for
-// visible LFO/envelope motion. This library has no hardware to answer
-// to (2026-08-27, "como nao sera usado para hardware, poderemos usar
-// lfos muito longas ou altissima frequencia/frequencias audiveis") - a
-// host driving advanceModGenerator() at audio sample rate, not a slow UI
-// timer, can legitimately push a generator into the audible/ultrasonic
-// range (a "modulator" doubling as an FM operator). 1 microsecond keeps
-// every division below finite/well-defined without imposing a musically
-// meaningful ceiling anywhere near audio-rate use.
+// Minimum rise, fall and cycle duration in milliseconds.
 constexpr float kMinTimeMs = 0.001f;
 
 float lerp(float a, float b, float t) { return a + (b - a) * t; }
@@ -33,16 +23,8 @@ float easeApply(float t, ModCurveType type) {
     }
 }
 
-// Full Delay-Attack-Hold-Decay-Sustain-Release envelope shared by
-// Sine/Triangle/Square/Custom's fallback and by every One-Shot regardless
-// of shape - the "DAHDSR envelope" this whole engine is built around (the
-// 6 segments ARE the shape, the Shape selector just changes the curve used
-// within them). Delay/Hold/Decay/Sustain default to values that collapse
-// this back to the original plain "AD envelope" exactly (see
-// ModGenerator's own comment). Decay and Release share the SAME curve
-// type (fallCurve) rather than each getting their own - both are downward
-// slopes with the same character, and a separate control for Decay alone
-// would be one knob too many for what it buys.
+// Evaluate delay, attack, hold, decay, sustain and release on one timeline.
+// Zero-length stages collapse without changing the remaining stage timings.
 float riseFallEnvelope(double phaseMs, float delayMs, float riseMs, float holdMs, float decayMs, float sustainLevel01,
                         float sustainMs, float fallMs, ModCurveType riseCurve, ModCurveType fallCurve,
                         bool useCosineEase) {
@@ -123,18 +105,7 @@ float resampleUniform(std::mt19937& rng) {
     return dist(rng);
 }
 
-// Random family axes (2026-09-01, Phase B - see ModGenerator::
-// randomSteps's own comment in Core/Mod.h for the full "why", studied
-// from Mutable Instruments Marbles' own real firmware source). Applies
-// Bias/Spread to a fresh uniform draw, OR replays a past value from
-// `rt.randomHistory` per the Deja Vu chance - either way, records
-// whatever value is RETURNED into history at the current step index so
-// a later high-Deja-Vu roll can replay it. `randomStepIndex` advances
-// on every call regardless of replay-vs-fresh, so the history buffer
-// always represents "the last N resamples this generator actually
-// output", not "the last N FRESH resamples" - a replay-of-a-replay is
-// intentional (Deja Vu near 1.0 should feel like a genuinely locked
-// loop, not just "50% chance of a fresh value" repeated).
+// Shared random-family resampling controls.
 float resampleRandomFamily(const ModGenerator& gen, ModRuntime& rt) {
     const auto slot = static_cast<size_t>(rt.randomStepIndex % ModRuntime::kRandomHistoryLen);
     float value;
@@ -149,13 +120,7 @@ float resampleRandomFamily(const ModGenerator& gen, ModRuntime& rt) {
     return value;
 }
 
-// Continuous glide between two random-family targets (2026-09-01,
-// Phase B) - `steps` 0 = glide over the WHOLE interval (matches the
-// old SlewedRandom exactly), 1 = glide over essentially none of it
-// (matches the old SampleHold's instant jump), continuous in between.
-// `intervalMs` is whatever this call site's own step/hit length is
-// (rise time in One-Shot, the step clock's own interval in Loop) -
-// same reference each shape already used before this generalization.
+// Interpolate targets according to randomSteps; zero glides across the full interval.
 float randomFamilyGlide(float from, float to, double elapsedMs, double intervalMs, float steps, ModCurveType curve) {
     const double glideMs = std::max(0.0, 1.0 - static_cast<double>(steps)) * intervalMs;
     if (glideMs < static_cast<double>(kMinTimeMs))
@@ -164,11 +129,7 @@ float randomFamilyGlide(float from, float to, double elapsedMs, double intervalM
     return from + (to - from) * easeApply(t, curve);
 }
 
-// SegmentChain shape (2026-09-01, Phase C - see ModSegment's own
-// comment in Core/Mod.h). totalMs is the sum of every segment's own
-// duration, same role `delayMs+riseMs+...` plays for the fixed-DAHDSR
-// shapes - used by the caller to know when a One-Shot chain finishes,
-// and to normalize a Loop chain's own phase wrap.
+// Evaluate the segment chain over its total duration in milliseconds.
 double segmentChainTotalMs(const std::vector<ModSegment>& segments) {
     double total = 0.0;
     for (const auto& seg : segments)
@@ -208,7 +169,7 @@ float evaluateSegmentChain(const std::vector<ModSegment>& segments, double phase
 
 namespace {
 
-// The six envelope times one cycle is built from (2026-09-23).
+// Six envelope-stage durations composing one cycle.
 //
 // A tempo-SYNCED Loop's cycle IS its rate division: the caller has already
 // split the division between rise and fall (computeEffectiveRiseFall), so
@@ -245,10 +206,7 @@ EnvelopeTimes envelopeTimes(const ModGenerator& gen, float riseMs, float fallMs)
     return t;
 }
 
-// PURE SHAPE (ported from Volca Drum, 2026-09-08 there): the textbook waveform
-// as a pure function of cycle phase, unipolar 0..1. With it on, the envelope
-// fields stop deciding the FORM and only set the cycle LENGTH. Envelope-like
-// shapes (SegmentChain, the random family) mean nothing "pure" and fall through.
+// Pure shape is a normalized phase function; envelope timings determine cycle duration.
 float evaluatePureShape(ModShape shape, float phase01) {
     constexpr float kTwoPi = 6.28318530717958647692f;
     switch (shape) {
@@ -270,10 +228,7 @@ bool shapeSupportsPure(ModShape shape) {
            || shape == ModShape::Square || shape == ModShape::Custom;
 }
 
-// ONE place that says what a continuous shape looks like, for Loop and
-// One-Shot alike (ported from Volca Drum, 2026-09-01 there): One-Shot used
-// to collapse every shape into the plain envelope, so a Saw or Square
-// one-shot was the same curve as a Triangle.
+// Continuous waveform evaluation shared by loop and one-shot modes.
 float evaluateContinuousShape(const ModGenerator& gen, const EnvelopeTimes& env, float warpedPhase01,
                               double warpedPhaseMs) {
     if (gen.pureShape && shapeSupportsPure(gen.shape)) {
@@ -307,26 +262,15 @@ float advanceModGenerator(const ModGenerator& gen, ModRuntime& rt, double deltaM
     if (gen.shape == ModShape::Mirror)
         return std::clamp(externalValue, 0.0f, 1.0f);
 
-    // SegmentChain totals its own segment list instead of the fixed
-    // DAHDSR fields (2026-09-01, Phase C) - everything downstream
-    // (trigger handling, One-Shot idle detection, Loop phase wrap) reads
-    // this same `totalMs`, so this one branch is all dispatch needs.
+    // Segment chains determine duration from their segment list, not DAHDSR fields.
     const EnvelopeTimes env = envelopeTimes(gen, gen.riseMs, gen.fallMs);
     const double totalMs = gen.shape == ModShape::SegmentChain ? segmentChainTotalMs(gen.segments) : env.total;
 
     if (triggerEdge) {
-        // Sync (2026-08-28) only applies to a Loop-mode generator - a
-        // One-Shot always hard-restarts (that's the only sensible
-        // "Trigger" behavior for an envelope), matching every prior
-        // host's existing behavior exactly when syncBehavior is left at
-        // its default Reset.
+        // Soft synchronization applies only in loop mode. One-shot triggers always restart phase.
         if (gen.cycle == ModCycleMode::Loop && gen.syncBehavior == ModSyncBehavior::Sync) {
-            // Soft-sync: pull phase PARTWAY toward the downbeat instead
-            // of snapping to it - stays musically locked to the trigger
-            // source over a couple of hits without ever producing an
-            // audible jump/glitch in the generator's own continuous
-            // output (a hard phaseMs=0 reset here would do exactly
-            // that - fine for Reset mode, wrong for Sync).
+            // Soft synchronization gradually pulls loop phase toward the downbeat.
+            // One-shot mode remains hard-triggered.
             constexpr double kSyncPullFactor = 0.5;
             rt.phaseMs *= (1.0 - kSyncPullFactor);
         } else {
@@ -344,12 +288,8 @@ float advanceModGenerator(const ModGenerator& gen, ModRuntime& rt, double deltaM
     }
 
     if (gen.cycle == ModCycleMode::OneShot && rt.oneShotIdle)
-        return 0.0f; // never fired yet, or finished and awaiting the next hit - sits at rest
-
-    // --- Stepped shapes (S&H / Random / SlewedRandom / Turing): advance a
-    // step clock independent of the rise/fall envelope's phase wrap, since
-    // "new value every cycle" is the defining behaviour, not a rise/fall
-    // curve shape. ---
+        return 0.0f; // Hold at rest before the first trigger or after one-shot completion.
+        // Stepped random shapes use a resampling clock independent of envelope phase.
     if (gen.shape == ModShape::SampleHold || gen.shape == ModShape::Random || gen.shape == ModShape::SlewedRandom ||
         gen.shape == ModShape::Turing) {
         if (gen.cycle == ModCycleMode::OneShot) {
@@ -360,10 +300,7 @@ float advanceModGenerator(const ModGenerator& gen, ModRuntime& rt, double deltaM
                 rt.oneShotIdle = true;
                 return 0.0f;
             }
-            // randomSteps-driven glide (2026-09-01, Phase B) - generalizes
-            // the old SlewedRandom-only case to a continuous 0..1 axis;
-            // Turing is deliberately excluded (its own bit-register value
-            // holds flat, no glide, matching its prior behavior exactly).
+            // Apply randomSteps glide to resampled random shapes; register output remains stepped.
             if (gen.shape != ModShape::Turing)
                 return randomFamilyGlide(rt.slewFrom, rt.heldValue, rt.phaseMs, static_cast<double>(gen.riseMs),
                                           gen.randomSteps, gen.riseCurve);
@@ -395,8 +332,7 @@ float advanceModGenerator(const ModGenerator& gen, ModRuntime& rt, double deltaM
                     : totalMs;
         }
 
-        // randomSteps-driven glide (2026-09-01, Phase B) - see the
-        // OneShot branch's own identical comment above.
+        // Use the same randomSteps glide as the one-shot branch.
         if (gen.shape != ModShape::Turing)
             return randomFamilyGlide(rt.slewFrom, rt.heldValue, rt.stepElapsedMs, rt.nextStepIntervalMs, gen.randomSteps,
                                       gen.riseCurve);
@@ -519,4 +455,4 @@ void computeEffectiveRiseFall(const ModGenerator& gen, double bpm, float& outRis
     outFallMs = std::max(kMinTimeMs, static_cast<float>(cycleMs) * (1.0f - shapePercent));
 }
 
-} // namespace ruidocore
+} //

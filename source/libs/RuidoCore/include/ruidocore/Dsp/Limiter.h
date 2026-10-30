@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -34,21 +32,8 @@
 
 namespace ruidocore {
 
-// A faithful port of Mutable Instruments' stmlib `Limiter`
-// (stmlib/dsp/limiter.h, MIT licensed, github.com/pichenettes/stmlib,
-// downloaded and read directly). This is the per-voice output safety
-// stage real Plaits' `ChannelPostProcessor::Process()` runs every
-// engine's raw output through before it ever reaches the mix - a fast-
-// attack (0.05/sample), very-slow-release (0.00002/sample) peak
-// follower that scales the signal down once its running peak exceeds
-// unity, with 0.8 headroom on top. RuidoCore's engines never had an
-// equivalent stage (each engine was ported for its own synthesis
-// formulas, not this final safety net), which is what let Modal's
-// high-Q resonances and String's voice pile-up blow past 2x-4x
-// headroom under real sequenced/multi-voice playback (2026-08-27,
-// "quase me fez passar mal" - a real listener-safety bug, not a
-// tonal-quality one). Applied once per voice per output path (main
-// and aux each get their own instance, matching real Plaits).
+// Stereo peak follower with rate-scaled attack and release.
+// See THIRD_PARTY.md and the preserved source-license notice for attribution.
 class Limiter {
 public:
     void init() {
@@ -69,4 +54,4 @@ private:
     float peak = 0.5f;
 };
 
-} // namespace ruidocore
+} //

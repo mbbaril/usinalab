@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import assert from 'node:assert/strict';
+import {GraphViewport,installEditableGraph} from '../graph-viewport.js';
+const v=new GraphViewport(),initial={width:300,height:72,anchor:{x:150,y:36},dx:.4,dy:.3};v.navigate(initial,{x:.1,y:.2},{x:.9,y:.8});assert(Math.abs(v.width-150)<1e-9);assert(Math.abs(v.height-36)<1e-9);assert(Math.abs(v.x-75)<1e-9);assert(Math.abs(v.y-18)<1e-9);
+const captured=new Set(),svg={dataset:{},getBoundingClientRect:()=>({left:0,top:0,width:600,height:150}),setPointerCapture:id=>captured.add(id),hasPointerCapture:id=>captured.has(id),releasePointerCapture:id=>captured.delete(id)},edits=[];let paints=0;
+const stop=installEditableGraph({svg,view:v,beginEdit:p=>p,moveEdit:(d,p)=>edits.push(p),paint:()=>paints++}),e=(id,x,y,type='pointermove')=>({pointerId:id,clientX:x,clientY:y,pointerType:'touch',type,preventDefault(){}});
+svg.onpointerdown(e(1,200,50));svg.onpointerdown(e(2,400,100));svg.onpointermove(e(2,500,130));assert(paints>0);assert.equal(edits.length,0,'Pinch cannot edit envelope parameters');svg.onpointerup(e(2,500,130,'pointerup'));svg.onpointerup(e(1,200,50,'pointerup'));assert.equal(svg.dataset.contacts,0);
+svg.onpointerdown(e(1,200,50));svg.onpointermove(e(1,240,60));assert(edits.length>0);const width=v.width,height=v.height,count=edits.length;svg.onpointerdown(e(2,400,100));svg.onpointermove(e(2,500,130));assert.equal(edits.length,count);assert.equal(v.width,width);assert.equal(v.height,height);svg.onpointerup(e(1,240,60,'pointerup'));svg.onpointerup(e(2,500,130,'pointerup'));assert.equal(svg.dataset.contacts,0);
+svg.onpointerdown(e(1,200,50));svg.onlostpointercapture(e(1,200,50,'lostpointercapture'));assert.equal(svg.dataset.contacts,1,'A stale lost-capture event cannot cancel a newly captured contact');stop();assert.equal(captured.size,0);v.reset();assert.deepEqual([v.x,v.y,v.width,v.height],[0,0,300,72]);
+console.log('Envelope viewport: anchored axes, navigation without edits, first-edit ownership, reused-pointer protection and reset/cancel passed.');

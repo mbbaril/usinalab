@@ -97,21 +97,8 @@ struct GeneratorUserPreset {
     GeneratorPresetValues values;
 };
 
-// Generates a full drum-kit-shaped Pattern in one shot: 6 roles (kick-like
-// anchor, snare-like backbeat, dense hat/texture layer, syncopated hit,
-// sparse accent/fx, burst/glitch layer), matching a conventional small
-// drum kit rather than an arbitrary part count - see kPartRoles in
-// Generator.cpp. Pure function of its inputs: no RNG state escapes this
-// call, so the same GeneratorParams always produce the exact same Pattern.
-// What a host changes about GENERATE (2026-09-16). Three Volca-family
-// copies of this generator differed only in these: how many lanes and in
-// which roles, how many steps a Part stores, whether it writes velocity,
-// how it walks a melodic line, and what it bakes after a Part is built.
-// Every switch that is off draws nothing from the random stream, so a
-// profile reproduces exactly what a copy written without that feature did.
-
-// One lane's character: how busy it is relative to the others, and how far
-// the style grid is rotated for it.
+// Generate six complementary rhythmic roles with shared tempo and configured profiles.
+// Each role owns its density, note range and articulation settings.
 struct GeneratorRole {
     float densityMultiplier;
     int rotation;
@@ -153,4 +140,4 @@ public:
     static Pattern generate(const GeneratorParams& params, const GeneratorProfile& profile = {});
 };
 
-} // namespace ruidocore
+} //

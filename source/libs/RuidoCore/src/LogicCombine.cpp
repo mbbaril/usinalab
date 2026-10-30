@@ -63,4 +63,4 @@ std::vector<int> combineLogicContinuousFold(const std::vector<std::vector<int>>&
     return result;
 }
 
-} // namespace ruidocore
+} //

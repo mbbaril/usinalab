@@ -164,12 +164,18 @@ struct RandGen {
 };
 
 // --- COMB ------------------------------------------------------------------------------------------------------------
+// Binary operations encode -1..1 as an unsigned byte (-1 -> 0, 0 -> 128,
+// 1 -> 255) and decode the result. BIT selects bit 0..7 using amount 0..1;
+// negative amount inverts the gate. XOR applies a mask to the top |amount| * 8
+// bits. AND retains high bits for positive amount and low bits for negative
+// amount. ADD MOD 256 adds the scaled modulation with byte wraparound.
 enum CombType { CT_SUM, CT_DIFF, CT_MUL, CT_DIV, CT_XFADE, CT_LAG, CT_THRESH, CT_OFFSET, CT_REMAP, CT_FOLLOW, CT_MIN,
-                CT_MAX, CT_INPUT, kNumCombTypes };
+                CT_MAX, CT_INPUT, CT_BIT, CT_XOR, CT_AND, CT_ADDMOD, kNumCombTypes };
 inline const char* combName(int t)
 {
     static const char* const N[kNumCombTypes] = { "SUM", "DIFF", "MULTIPLY", "DIVIDE", "CROSSFADE", "LAG", "THRESHOLD",
-                                                  "OFFSET", "REMAP", "FOLLOWER", "MIN", "MAX", "INPUT LEVEL" };
+                                                  "OFFSET", "REMAP", "FOLLOWER", "MIN", "MAX", "INPUT LEVEL", "BIT",
+                                                  "XOR", "AND", "ADD MOD 256" };
     return t >= 0 && t < kNumCombTypes ? N[t] : "SUM";
 }
 // what a type does, written out (the editor shows it under the drawing: no manual needed)
@@ -181,9 +187,15 @@ inline const char* combFormula(int t)
         "source, slowed (amount: 0 .. 2 s)", "1 when source > amount, else 0", "source + amount",
         "source bent (amount: < 0 log, > 0 exp)", "source's level, followed (amount: its release)",
         "the lower of source and mod x amount", "the higher of source and mod x amount",
-        "the audio input's level (amount: sensitivity)" };
+        "the audio input's level (amount: sensitivity)", "bit (amount x 7) of source's 8-bit code, as 0 / 1",
+        "source's code XOR mod's code, top |amount| x 8 bits", "source's code, its top (amount > 0) or low bits kept",
+        "(source's code + mod x amount x 128) mod 256" };
     return t >= 0 && t < kNumCombTypes ? F[t] : "";
 }
+
+// the 8-bit code of a value -1..1, and back
+inline int combCode(double x) { return std::clamp((int)std::floor((std::clamp(x, -1.0, 1.0) + 1.0) * 128.0), 0, 255); }
+inline double combDecode(int c) { return (c & 255) / 127.5 - 1.0; }
 
 // one control block: a = the source, b = the mod, amt -1..1; st a voice's state (LAG, FOLLOWER); blockSec a block's
 // seconds; input the audio input's level (0..1)
@@ -214,6 +226,25 @@ inline double combBlock(int type, double a, double b, double amt, double& st, do
     case CT_MIN: y = std::min(a, b * amt); break;
     case CT_MAX: y = std::max(a, b * amt); break;
     case CT_INPUT: y = input * std::exp2(amt * 4.0); break;
+    case CT_BIT: {
+        const int k = (int)std::lround(std::fabs(amt) * 7.0);
+        const bool on = ((combCode(a) >> k) & 1) != 0;
+        y = (on != (amt < 0.0)) ? 1.0 : 0.0;
+        break;
+    }
+    case CT_XOR: {
+        const int bits = (int)std::lround(std::fabs(amt) * 8.0), mask = (0xFF << (8 - bits)) & 0xFF;
+        y = combDecode(combCode(a) ^ (combCode(b) & mask));
+        break;
+    }
+    case CT_AND: {
+        const int bits = (int)std::lround(std::fabs(amt) * 8.0);
+        const int mask = amt >= 0.0 ? (0xFF << (8 - bits)) & 0xFF : (1 << bits) - 1;
+        y = amt >= 0.0 ? combDecode(combCode(a) & mask)
+                       : (bits > 0 ? (combCode(a) & mask) / (double)mask * 2.0 - 1.0 : -1.0);   // (the low bits, spread)
+        break;
+    }
+    case CT_ADDMOD: y = combDecode(combCode(a) + (int)std::lround(b * amt * 128.0)); break;
     default: break;
     }
     return std::clamp(y, -1.0, 1.0);

@@ -1,19 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Usina FM engine - SAMPLE (27/10/2026; the user, approving its four points: "mande ver e vamos ser felizes com algo
-// que não há"): an operator that plays a recording - loaded from a file or captured from the input - at its pitch.
-// Through the algorithm it goes where any operator goes: into a MODAL operator it is the excitation (a can struck,
-// heard as a bell), through the TEXTURE it is grains, and as a modulator it moves the other operators' phase: a sound
-// of the world as FM. Its input (FM) moves the reading place: phase modulation of the recording itself.
+// Usina SAMPLE operator: pitched playback of a file or captured input.
+// The algorithm routes its output as audio, excitation or phase modulation.
+// Incoming modulation offsets the sample read phase.
 //   A READ (a list): ONCE, LOOP, PING-PONG, REVERSE (once, from the end)
 //   B START 0..100 (% of the recording)  C LENGTH 0..200 (0..100 % of what is left; 1 ms at least)
 //   D LOOP: XFADE 0..100 - the seam crossfaded over up to half the loop (no click where it joins); ONCE, REVERSE,
 //     PING-PONG: FADE 0..100 - the reading's own fades, raised cosine, 1 ms (0) .. 200 ms (100), in at its start and
 //     (ONCE, REVERSE) out before the region's end
-// No click anywhere (28/10; the user heard pops - in FM every corner of a modulator is a jump in its carrier's phase):
-// a raised-cosine fade at least at every start and every end - 1 ms where the operator is heard (a hit keeps its
-// snap), 5 ms where it only modulates (heard through a carrier's phase, a fast change is a click: measured, 1 ms left
-// the carrier's step 1.76 x its own), and a voice taken while it still sounds (stolen, or its note again) lets its
-// old reading go over the same time while the new one comes in - never a jump.
+// Raised-cosine fades prevent discontinuities at region boundaries and voice
+// replacement: at least 1 ms for audible operators and 5 ms for modulators.
+// A replaced voice crossfades its previous readout into the new one.
 // Pitch: the note (with COARSE, FINE, FIXED... as any operator) against the root C3 (MIDI 60): played at C3 the
 // recording is heard as it is. Read with 4-point Hermite interpolation at the engine's (oversampled) rate.
 // Nothing here allocates or frees on the audio thread: SampleSlot hands a recording over and takes the old one back.

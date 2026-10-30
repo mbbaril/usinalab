@@ -7,8 +7,7 @@ namespace ruidocore {
 
 namespace {
 
-// HOW LIKELY a transform is at a given amount (2026-09-17, user: "nosso
-// motor pode ser ainda mais violento em valores altos").
+// Map amount to transform probability, increasing strongly near the upper range.
 //
 // Every roll used to be a flat `amount * k` with k at most 0.4, so at
 // FULL GLITCH the strongest transform still left six steps in ten
@@ -86,11 +85,7 @@ void GlitchEngine::warpClock(int partIndex, int& multiplier, int& divider) const
     const auto& g = partGestures[static_cast<size_t>(partIndex)];
     if (g.kind != Gesture::Warp || g.stepsLeft <= 0)
         return;
-    // MULTIPLIED, not replaced: a Part already running at half speed and
-    // warped by three ends up at three-halves - the relationship the user
-    // set, times the one the gesture chose. Replacing would throw away the
-    // lane's own clock for the duration, and a lane's clock is usually the
-    // reason it sounds like itself.
+    // Multiply temporary clock factors by the stored part multiplier and divider.
     multiplier = std::max(1, multiplier * g.warpMultiplier);
     divider = std::max(1, divider * g.warpDivider);
 }
@@ -111,8 +106,7 @@ GlitchEngine::Gesture GlitchEngine::drawGesture(Gesture previous) {
     // still seems to promise something.
     if (params.warpDepth <= 1)
         weights[2] = 0.0f;
-    // Nor is there anything to dive with on an instrument that has no
-    // pitch - the DR-670's pads, the Eurorack's gates.
+    // Disable pitch dives for profiles without pitch control.
     if (!profile.pitch)
         weights[8] = 0.0f;
     // One spotlight at a time. Two lanes each claiming the stage back to
@@ -288,15 +282,11 @@ std::size_t GlitchEngine::processInto(const Pattern& pattern, const FiredStep* t
             ? 1.0f - static_cast<float>(std::max(0, g.stepsLeft - 1)) / static_cast<float>(g.totalSteps - 1)
             : 1.0f;
 
-        // FREEZE and REVERSE replay the lane's OWN content from another
-        // step. Both therefore change the note, and on an instrument with
-        // no pitch that is not a musical choice - it is a wrong address:
-        // a DR-670 pad is SELECTED by its note, so a replayed note moves
-        // the hit to a different pad, which is a bug this family already
-        // shipped once and fixed. So the note follows only where a note
-        // means pitch, and where it does, the host's hook hears the
-        // interval like any other pitch move - otherwise a host mirroring
-        // the note into its own pitch field drifts out of step with it.
+        // FREEZE and REVERSE replay content from another step. Change the
+        // note only for pitched profiles: drum machines may select pads by
+        // note, so replaying another note would address a different pad.
+        // Report pitch intervals through the host hook to keep any mirrored
+        // pitch field synchronized.
         if ((gesture == Gesture::Freeze || gesture == Gesture::Reverse) && original.partIndex >= 0
             && original.partIndex < static_cast<int>(pattern.parts.size())) {
             const Part& part = pattern.parts[static_cast<size_t>(original.partIndex)];
@@ -376,18 +366,9 @@ std::size_t GlitchEngine::processInto(const Pattern& pattern, const FiredStep* t
                 profile.afterPitchShift(step.event, semitones);
         }
 
-        // A CC STORM, not one polite CC (user: "abusar de envio de ccs").
-        // One parameter per step is a tic; several unrelated ones at once
-        // is a machine coming apart, which is what this control is for.
+        // Emit several independently selected controller changes per step; amount controls density.
         //
-        // Two rules keep it from sounding like a loop, which the user put
-        // as plainly as it can be put - "se repetir e a coisa mais
-        // anti-glitch":
-        //   - no parameter repeats WITHIN a step, so a storm is several
-        //     different things rather than one thing several times;
-        //   - no parameter repeats the one this Part used LAST step,
-        //     re-drawn ONCE (once, not until it differs - a retry loop on
-        //     a one-entry list never ends).
+        // Avoid repeating the same part and transform consecutively; keep independent selections.
         if (profile.glitchableParamCount > 0 && unit(rng) < glitchChance(a, 0.25f)) {
             const auto count = static_cast<size_t>(profile.glitchableParamCount);
             const int width = std::clamp(params.stormWidth, 1, kMaxStormWidth);
@@ -455,4 +436,4 @@ std::size_t GlitchEngine::processInto(const Pattern& pattern, const FiredStep* t
     return emitted;
 }
 
-} // namespace ruidocore
+} //

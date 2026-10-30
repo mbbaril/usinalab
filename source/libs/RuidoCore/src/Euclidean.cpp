@@ -68,4 +68,4 @@ std::vector<bool> euclideanRhythm(int steps, int pulses, int rotation) {
     return result;
 }
 
-} // namespace ruidocore
+} //

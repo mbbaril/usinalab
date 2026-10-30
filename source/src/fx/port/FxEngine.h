@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Emilie Gillet's Eurorack firmware (https://github.com/pichenettes/eurorack), used under
-// the MIT licence. The upstream file it derives from: beads/dsp/fx/fx_engine.h ("Base class for building reverbs"),
-// read at eurorack f4cfa76 (D:/upstream/eurorack), ported line for line.
+// Ported line for line from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2014 Emilie Gillet.
 //
@@ -34,7 +32,7 @@
 // freeze: tests/PortTest RATE). At K = 1 it is upstream's engine. All three memory formats kept (12-bit, 16-bit,
 // 32-bit float): the plugin uses the float one, the test the 16-bit one upstream's reverb has, against upstream.
 #pragma once
-#include "StmlibDsp.h"
+#include "DspUtil.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -275,4 +273,4 @@ private:
     CosineOscillator lfo_[2];
 };
 
-} // namespace usina::port
+} // Namespace usina::port

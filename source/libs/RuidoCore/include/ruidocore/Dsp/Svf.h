@@ -5,18 +5,7 @@
 
 namespace ruidocore {
 
-// Zero-delay-feedback (topology-preserving transform) state-variable
-// filter - one coefficient update per block/parameter-change, one
-// Process() call per sample, LP/BP/HP all available simultaneously from
-// the same two integrator states. This specific trapezoidal-integration
-// SVF derivation (g/r/h coefficients, hp/bp/lp all solved from one
-// algebraic system per sample) is the same well-known topology used in
-// Mutable Instruments' `stmlib::Svf` (MIT-licensed,
-// github.com/pichenettes/stmlib/blob/master/dsp/filter.h - read for this
-// library's own synth-engine research, see docs/SYNTH_ENGINE_RESEARCH.md)
-// and in countless other real synths - independently reimplemented here
-// (not copied) in this library's own style, but crediting the same
-// underlying derivation rather than pretending it was invented fresh.
+// See THIRD_PARTY.md and the preserved license notice for source provenance.
 //
 // Unlike a naive/non-ZDF SVF, this stays STABLE even at high resonance
 // and high cutoff-relative-to-sample-rate, which matters a lot for a
@@ -56,14 +45,10 @@ public:
     }
 
     // Simultaneous band-pass + low-pass read from ONE state update -
-    // matches real Plaits' own `stmlib::Svf::Process<BAND_PASS,
+    // matches reference `Svf::Process<BAND_PASS,
     // LOW_PASS>(in, &bp_out, &lp_out)`, which several real engines (e.g.
     // AnalogBassDrum) rely on to get two DIFFERENT signals from the same
-    // filter pass in one sample (2026-08-27, "faça o mesmo método de
-    // baixar o código" fidelity review - calling process() twice with
-    // different Modes would silently double-update state1/state2 and
-    // corrupt the filter, which is exactly the bug this method exists to
-    // avoid).
+    // filter pass in one sample .
     void processBandPassAndLowPass(float in, float& bpOut, float& lpOut) {
         const float hp = (in - r * state1 - g * state1 - state2) * h;
         const float bp = g * hp + state1;
@@ -74,14 +59,8 @@ public:
         lpOut = lp;
     }
 
-    // Exact port of real Plaits' own `Svf::ProcessMultimodeLPtoHP` -
-    // used by the Filtered Noise engine's own multimode crossfade knob.
-    // NOT the same formula as this class's own `processMultimode` below
-    // (that one is this library's own invented convenience utility) -
-    // this one has a specific quirk real Plaits actually has: at the
-    // full-HP end (mode=1.0) the HP gain goes NEGATIVE (-1.0, not
-    // +1.0), an inverted-phase highpass, not a generic crossfade -
-    // faithfully kept rather than "corrected."
+    // Multimode low-pass-to-high-pass crossfade used by filtered-noise synthesis.
+    // Its transfer law differs from processMultimode; do not substitute the two.
     float processMultimodeLpToHp(float in, float mode) {
         const float hp = (in - r * state1 - g * state1 - state2) * h;
         const float bp = g * hp + state1;
@@ -118,4 +97,4 @@ private:
     float state1 = 0.0f, state2 = 0.0f;
 };
 
-} // namespace ruidocore
+} //

@@ -6,13 +6,13 @@ export const operatorSections={
   expression:[['level','vel','vel_pitch','lfo1_level'],['VEL_COARSE'],['kt_low','kt_high','kt_center',['kt_l_curve','kt_h_curve']]],
   envelope:[['atk','dec','sus','rel','curve','rate_key'],['env_atk_curve','env_rel_curve',['env_mode','env_retrig']]]
 };
-export const modalRows={object:[['c','d','bright','stiff'],['position','density','irreg','tension'],['rattle','material']],exciter:[['exciter'],['strike','hardness','pressure','b'],['damp']]};
+export const modalRows={object:[['c','d','bright','stiff'],['position','density','irreg','tension'],['rattle','width','material']],exciter:[['exciter'],['strike','hardness','pressure','b'],['damp']]};
 export const operatorUsesWave=mode=>![6,7,9,10,11].includes(mode);
 export function modeRows(mode,fx,models,page=0){
   const specs=['a','b','c','d'].map((key,i)=>({key,spec:operatorValue(mode,i,fx,models)})).filter(v=>v.spec);
   const selectors=['mode',...specs.filter(v=>v.spec.choices).map(v=>v.key)];
   if(mode===8)return {selectors,rows:page?modalRows.exciter:modalRows.object};
-  const knobs=specs.filter(v=>!v.spec.choices).map(v=>v.key),rows=[];if(mode===13)knobs.push('sub','pwm');for(let i=0;i<knobs.length;i+=3)rows.push(knobs.slice(i,i+3));   // (UNISON: SUB, PWM under its own, as the plugin's)
+  const knobs=specs.filter(v=>!v.spec.choices).map(v=>v.key),rows=[];if(mode===13)knobs.push('sub','pwm','width');for(let i=0;i<knobs.length;i+=3)rows.push(knobs.slice(i,i+3));   // UNISON: SUB, PWM under its own, as the plugin's
   return {selectors,rows};
 }
 export function mountOperatorRows({root,el,prefix,rows,descriptor,field,special,resolve=operatorParameter,choices=new Set(),columns}){

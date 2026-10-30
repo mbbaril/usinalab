@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import assert from 'node:assert/strict';
+import {controlName,keyboardSlider} from '../accessible-controls.js';
+assert.equal(controlName({id:'op2_level',name:'LEVEL',group:'OP2'}),'OP2 LEVEL');
+assert.equal(controlName({id:'op2_level',name:'OP2 LEVEL',group:'OP2'}),'OP2 LEVEL');
+assert.equal(controlName({id:'f2_cutoff',name:'CUTOFF',group:'FILTER'}),'FILTER 2 CUTOFF');
+assert.equal(controlName({id:'dly_mix',name:'MIX',group:'DELAY'}),'DELAY MIX');
+assert.equal(controlName({id:'op1_env_mode',name:'MODE'}),'OP1 ENVELOPE MODE');
+assert.equal(controlName({id:'op1_mode',name:'OP1.MODE'}),'OP1 OSCILLATOR MODE');
+assert.equal(controlName({id:'op1_dec',name:'DECAY'}),'OP1 ENVELOPE DECAY');
+assert.equal(controlName({id:'op1_b',name:'DECAY'}),'OP1 PROCESSOR DECAY');
+assert.equal(controlName({id:'eg2_mode',name:'MODE',group:'MOD'}),'EG2 MODE');
+assert.equal(controlName({id:'custom_mode',name:'MODE',group:'MOD'}),'MOD MODE');
+assert.equal(controlName({id:'lpg_r_source',name:'R SOURCE',group:'MOD'}),'LPG R SOURCE');
+assert.equal(controlName({id:'lfo2_speed',name:'SPEED',group:'MOD'}),'LFO2 SPEED');
+let v=0,writes=0,prevented=0;const attrs={},target={setAttribute(k,v){attrs[k]=v;}};
+keyboardSlider(target,{name:'MACRO 1',get:()=>v,set:x=>{v=x;writes++;}});
+const key=(key,shiftKey=false)=>target.onkeydown({key,shiftKey,preventDefault(){prevented++;}});
+assert.equal(target.tabIndex,0);assert.equal(attrs.role,'slider');assert.equal(attrs['aria-label'],'MACRO 1');
+key('ArrowUp');assert.equal(v,.01);key('ArrowLeft',true);assert.ok(Math.abs(v-.009)<1e-12);
+key('Home');assert.equal(v,-1);key('ArrowDown');assert.equal(v,-1);key('End');assert.equal(v,1);key('ArrowRight');assert.equal(v,1);
+const before=writes;key('a');assert.equal(writes,before);assert.equal(prevented,6);
+v=NaN;key('ArrowUp');assert.equal(writes,before);
+console.log('Accessible controls: contextual names, slider semantics, bounds, fine increments and musical-key isolation passed.');

@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Emilie Gillet's Eurorack firmware (https://github.com/pichenettes/eurorack), used under
-// the MIT licence. The upstream files it derives from: beads/dsp/fx/reverb.h ("Reverb.") and beads/dsp/frame.h (the
-// float frame), read at eurorack f4cfa76 (D:/upstream/eurorack), ported line for line.
+// Ported line for line from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2014 Emilie Gillet.
 //
@@ -41,7 +39,7 @@
 
 namespace usina::port {
 
-// beads/dsp/frame.h (Frame<float>, the part the reverb and the limiter use)
+// dsp/frame.h (Frame<float>, the part the reverb and the limiter use)
 struct FloatFrame {
     float l;
     float r;
@@ -113,7 +111,7 @@ public:
         const float input_gain = 0.2f * (1.0f - 0.333f * reverb_time_);
         const float output_gain = 0.4f / input_gain;
 
-        // const float send_amount = 1.0f;
+        // Const float send_amount = 1.0f;
         // const float wet = mix_ * (2.0f - mix_) * output_gain;
 
         const float send_amount_sqrt = mix_ * (2.0f - mix_);
@@ -201,4 +199,4 @@ private:
     float lp_2_ = 0.0f;
 };
 
-} // namespace usina::port
+} // Namespace usina::port

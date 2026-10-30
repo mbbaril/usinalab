@@ -71,7 +71,7 @@ Tables::Tables()
         wave[(size_t)(A1P2 + n - 2)] = additive(a);
     }
 
-    // SAW HD, SQR HD: level k keeps the harmonics up to 256 >> k, one scale for all the levels of a wave
+    // SAW HD, SQR HD: level k keeps the harmonics up to 256 >> k, one scale for all the levels of a wave()
     const auto hd = [](std::array<Table, kHdLevels>& out, const std::function<double(int)>& coef) {
         std::array<std::vector<double>, kHdLevels> lv;
         double peak = 0.0;
@@ -94,7 +94,7 @@ Tables::Tables()
     hd(hdSqr, [](int n) { return n % 2 ? (4 / kPi) / n : 0.0; });
 
     // the chip sines: the exact shape (fn, a cycle in 0..1) sampled finely, its harmonics (DC, sines and cosines) up to
-    // 256; level k keeps them up to 256 >> k, the DC always; one scale for all the levels of a wave (its widest one's
+    // 256; level k keeps them up to 256 >> k, the DC always; one scale for all the levels of a wave() (its widest one's
     // peak at 1)
     const auto chip = [](std::array<Table, kHdLevels>& out, const std::function<double(double)>& fn) {
         constexpr int kFine = 16384, kH = 256;
@@ -150,7 +150,7 @@ Tables::Tables()
     for (int i = 0; i < kNumCoarse; ++i)        // 0..6: 1/128 .. 1/2; 7..38: 1 .. 32
         coarseLog2[(size_t)i] = i < 7 ? (double)(i - 7) : std::log2((double)(i - 6));
 
-    // the classic 32 (msfa, Apache-2.0: usina16 fm6_core.c FM6_ALG; the feedback bits are not used), then OPX's 8
+    // the classic 32 (msfa, Apache-2.0: reference algorithm table; the feedback bits are not used), then OPX's 8
     static const uint8_t A[kNumAlgs][6] = {
         { 0xc1, 0x11, 0x11, 0x14, 0x01, 0x14 }, { 0x01, 0x11, 0x11, 0x14, 0xc1, 0x14 }, { 0xc1, 0x11, 0x14, 0x01, 0x11, 0x14 },
         { 0xc1, 0x11, 0x94, 0x01, 0x11, 0x14 }, { 0xc1, 0x14, 0x01, 0x14, 0x01, 0x14 }, { 0xc1, 0x94, 0x01, 0x14, 0x01, 0x14 },

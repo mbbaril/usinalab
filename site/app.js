@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
+import {controlName} from './accessible-controls.js';
 import {createPresetBrowser,presetCategories} from './preset-browser.js';
 import {mountPresetExport} from './preset-export-ui.js';
 import {factoryParameters} from './factory-preset.js';
@@ -41,13 +42,13 @@ if (window.Capacitor?.isNativePlatform()) document.documentElement.classList.add
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const shell=installInstrumentShell({el}),pickup=new MidiPickup();
 const categories = Object.fromEntries(presetCategories);
-const modes = ['FM', 'RING', 'FILTER', 'FILTER FM', 'FOLD', 'EFFECT', 'BYPASS', 'MUTE', 'MODAL', 'CHAOS', 'STOCHASTIC', 'MACRO', 'SAMPLE', 'UNISON'];
-const effects = ['NONE', 'TEXTURE', 'ROOM', 'DISTORT', 'IR · pendente', 'VAPOR', 'DELAY'];
+const modes = ['FM', 'RING', 'FILTER', 'FILTER FM', 'FOLD', 'EFFECT', 'BYPASS', 'MUTE', 'MODAL', 'CHAOS', 'STOCHASTIC', 'MACRO', 'SAMPLE', 'UNISON', 'BITS'];
+const effects = ['NONE', 'TEXTURE', 'ROOM', 'DISTORT', 'IR · pendente', 'VAPOR', 'DELAY', 'FILTER'];
 const fxSlots = ['fx_a', 'fx_b', 'aux', 'loop'].flatMap(bus => ['', '2', '3'].map(slot => `${bus}${slot}_type`));
 const state = { params: {}, routes: [], sequence: Array.from({ length: 9 }, (_, lane) => Array.from({ length: 64 }, () => ({ on: false, inherit: true, note: lane >= 5 ? [36, 41, 48, 55][lane - 5] : 60, velocity: lane > 0 && lane < 5 ? 64 : 100, probability: 1, ratchet: 1, gate: .5 }))), lanes: Array.from({ length: 9 }, () => ({ length: 16, direction: 0, mul: 1, div: 1, mute: false })), resolution: 4, swing: 0, preset: 'CORDA FM' };
 let context, node, analyser, meta, algorithmData, descriptors = [], seqCursors = Array(9).fill(-1), byId = new Map(), byName = new Map(), library = [], view = 'operators', lane = 0, midi, inputStream, inputNode, pendingParams = new Map(), flushQueued = false, audioReady = false;
-// the engine hears a value at once; the screen catches up once a frame (28/10, the iPad: a knob or a CC used to wait for
-// the frame, and every CC redrew the MIDI addresses of the whole page). lastSyncMs: the frame's resync, for ?diag=1
+// Send values immediately; redraw at most once per frame. lastSyncMs records
+// frame resynchronization for ?diag=1.
 let paramsUi = false, addressesQueued = false, lastSyncMs = NaN;
 let nativeInput = false, preferNativeAudio = true;
 function audioBackendPreference(){try{return localStorage.getItem('usina.audio-backend')||'auto';}catch{return'auto';}}
@@ -130,10 +131,10 @@ function sendState() {
   send({ type: 'globals', resolution: state.resolution, swing: state.swing });
   send({ type: 'sequence', sequence: state.sequence, lanes: state.lanes });
 }
-// iOS / iPadOS (27/10, iPad 10ª geração: o áudio ativava e ficava mudo; o YouTube tocava): o Safari põe a Web Audio na
-// categoria "ambiente", que obedece ao modo silencioso e cede a outra aba. A página pede a categoria "reprodução"
-// (Audio Session API, Safari 17+); antes disso, um <audio> silencioso em laço, iniciado no mesmo toque, faz o mesmo.
-// O contexto interrompido pelo sistema é retomado no próximo toque e na volta da aba; a pausa pedida pela pessoa fica.
+// Request playback audio-session routing so silent mode does not mute synthesis.
+// Where unavailable, start a silent audio loop within the activation gesture.
+// Resume system interruptions on interaction or visibility restoration; preserve
+// an explicit pause.
 let audioUserPaused = false, silentKeeper = null;
 function claimPlaybackSession() {
   if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch {} return; }
@@ -182,6 +183,7 @@ async function startAudio() {
         else if(data.type==='source'){sourceScopes.receive(data);}
         else if (data.type === 'meter') {
           if (diag && data.burst) diag.burst = data.burst;
+          if (diag && Number.isFinite(data.load)) diag.load = Math.max(data.load, (diag.load || 0) * .9);   // (its recent peak)
           if(data.cursors)seqCursors=data.cursors;
           if(view==='cabine')$('view').refreshCabine?.();if(view==='sequence')$('view').refreshSequence?.();
           $('voices').textContent = `${String(data.voices).padStart(2, '0')} VOZES`;
@@ -282,7 +284,7 @@ function knob(id, title, descriptor = null) {
   const d = descriptor || byId.get(id); if (!d) return el('div');
   const n = el('div', 'knob'), label = el('label', '', title || d.name), dial = el('div', 'dial'), input = el('input');
   const unique = `knob-${id}${descriptor?.instance?'-'+descriptor.instance:''}`; input.id = unique; label.htmlFor = unique; input.type = 'number'; input.min = d.min; input.max = d.max; input.step = d.step;
-  dial.tabIndex = 0; dial.setAttribute('role', 'slider'); dial.setAttribute('aria-label', title || d.name); dial.setAttribute('aria-valuemin', d.min); dial.setAttribute('aria-valuemax', d.max);
+  dial.tabIndex = 0; dial.setAttribute('role', 'slider'); dial.setAttribute('aria-label', controlName(d,title || d.name)); dial.setAttribute('aria-valuemin', d.min); dial.setAttribute('aria-valuemax', d.max);
   const skew = /^op\d_fixed_hz$/.test(id) ? .25 : d.skew || 1;
   const readout = descriptor ? el('output', 'knob-value') : input;
   const update = v => { v = Math.min(d.max, Math.max(d.min, v)); const ratio = Math.pow((v - d.min) / (d.max - d.min), skew), origin = d.min < 0 && d.max > 0 ? Math.pow(-d.min / (d.max - d.min), skew) : 0; dial.style.setProperty('--arc-start', `${Math.min(origin, ratio) * 270}deg`); dial.style.setProperty('--arc-end', `${Math.max(origin, ratio) * 270}deg`); dial.style.setProperty('--turn', `${ratio * 270}deg`); dial.style.setProperty('--angle', `${ratio * 270 - 135}deg`); input.value = Number.isInteger(v) ? String(v) : String(+v.toFixed(3)); if (descriptor) readout.textContent = format(d, v); dial.setAttribute('aria-valuenow', v); dial.setAttribute('aria-valuetext', format(d, v)); };
@@ -308,8 +310,8 @@ function field(d) {
   if (/^op\d_mode$/.test(d.id)) choices = modes;
   if (d.id.endsWith('_type') && ['FX A', 'FX B', 'AUX', 'LOOP'].includes(d.group)) choices = effects;
   const toggle = choices?.[0] === 'Desligado' && choices?.[1] === 'Ligado';
-  if (toggle) { const button = el('button', 'param-toggle'); button.type = 'button'; button.setAttribute('role', 'switch'); button.setAttribute('aria-label', d.name); button.onclick = () => setParam(d.id, param(d.id) ? 0 : 1); root.append(button); }
-  else if (choices) { const select = el('select'); select.setAttribute('aria-label', d.name); choices.forEach((c, i) => { const o = el('option', '', c); o.value = i+d.min; if (i === 4 && choices === effects || choiceDisabled(d,i+d.min)) o.disabled = true; select.append(o); }); select.value = d.min+(param(d.id)-d.min)%choices.length; releasePointerChoiceFocus(select); select.onchange = () => { setParam(d.id, +select.value); output.textContent = select.options[select.selectedIndex].text; }; root.append(select); }
+  if (toggle) { const button = el('button', 'param-toggle'); button.type = 'button'; button.setAttribute('role', 'switch'); button.setAttribute('aria-label', controlName(d)); button.onclick = () => setParam(d.id, param(d.id) ? 0 : 1); root.append(button); }
+  else if (choices) { const select = el('select'); select.setAttribute('aria-label', controlName(d)); choices.forEach((c, i) => { const o = el('option', '', c); o.value = i+d.min; if (i === 4 && choices === effects || choiceDisabled(d,i+d.min)) o.disabled = true; select.append(o); }); select.value = d.min+(param(d.id)-d.min)%choices.length; releasePointerChoiceFocus(select); select.onchange = () => { setParam(d.id, +select.value); output.textContent = select.options[select.selectedIndex].text; }; root.append(select); }
   else {
     const input = el('input'); input.type = 'range'; input.min = 0; input.max = 1; input.step = 'any';
     const skew = /^op\d_fixed_hz$/.test(d.id) ? .25 : d.skew || 1;
@@ -353,7 +355,7 @@ function refreshAddresses() {
   });
 }
 function attachAddressing(root, d) {
-  root.midiSync=mountMidiLearn({root,id:d.id,title:d.name,el,maps:()=>state.ccMaps,waiting:m=>pickup.waiting(m),learn:armLearn,forget:forgetMidi});
+  root.midiSync=mountMidiLearn({root,id:d.id,title:controlName(d),el,maps:()=>state.ccMaps,waiting:m=>pickup.waiting(m),learn:armLearn,forget:forgetMidi});
   const destination=destinationFor(d);
   root.classList.toggle('has-modulation', state.routes.some(r => r.destination === destinationFor(d)?.index));
   root.classList.toggle('has-midi', state.ccMaps.some(m => m.param === d.id));
@@ -362,7 +364,7 @@ function attachAddressing(root, d) {
   if(destination){
     const tray=mountModulationTray({root,destination:destination.index,title:d.name,metadata:()=>meta,state,send,el,changed:refreshAddresses});root.modSync=()=>{tray.refresh();root.modFeedbackSync?.();};root.modTray=tray;modulationFeedback.mount(root,d,destination.index);
     const originalSync=root.sync;root.sync=()=>{originalSync?.();tray.refresh();root.modFeedbackSync?.();};
-    const plus=el('button','mod-add','+');plus.type='button';plus.setAttribute('aria-label',`Adicionar modulação a ${d.name}`);
+    const plus=el('button','mod-add','+');plus.type='button';plus.setAttribute('aria-label',`Adicionar modulação a ${controlName(d)}`);
     plus.onclick=e=>{e.preventDefault();if(selectedSource!==null){editDirectRoute(d);return;}openSourcePicker({anchor:plus,el,metadata:()=>meta,pick:source=>assignRoute(d,source)});};
     const mainDial=root.querySelector(':scope > .dial');if(mainDial){const zone=el('div','dial-zone');mainDial.replaceWith(zone);zone.append(mainDial,plus);}else root.append(plus);
   }
@@ -456,19 +458,22 @@ function renderMidiMaps(root){
 }
 function renderSequence(root){sequencePanel.render(root);}
 
-// A note played now goes without a time: the worklet plays it at the next block it renders. Stamping it with this
-// page's context.currentTime made it wait whenever that clock ran ahead of the worklet's (27/10, iPad: Safari renders
-// in larger bursts; the dono: "atraso pra tocar"). Only a note given a time (the audition's release, MIDI with a
-// future timestamp) is scheduled.
+// Untimed notes render in the next worklet block. Only explicitly timed events
+// are scheduled; the page clock can run ahead of the render clock.
 function note(status, a, b, when) {
   if (!audioReady || context?.state!=='running') { message('Ative o áudio para tocar.'); return; }
-  if (diag && (status & 0xf0) === 0x90 && b > 0 && performance.now() - diag.down < 1000) { diag.touch = performance.now() - diag.down; diag.app = performance.now() - diag.entry; }
+  if (diag && (status & 0xf0) === 0x90 && b > 0 && performance.now() - diag.down < 1000) { diag.touch = performance.now() - diag.down; diag.app = performance.now() - diag.entry; diag.touches.push(diag.touch); if (diag.touches.length > 20) diag.touches.shift(); }
   send({ type: 'midi', status, a, b, frame: when === undefined ? undefined : Math.round(Math.max(context.currentTime, when) * context.sampleRate) });
 }
-// ?diag=1: a strip with the audio path's numbers (the device's report, the iOS burst, touch -> note), nothing else
-const diag = new URLSearchParams(location.search).has('diag') ? { down: -1e9, entry: -1e9, touch: NaN, app: NaN, burst: 0 } : null;
+// ?diag=1: a strip with the audio path's numbers (the device's report, the iOS burst, touch -> note()), nothing else
+const diag = new URLSearchParams(location.search).has('diag') ? { down: -1e9, entry: -1e9, touch: NaN, app: NaN, burst: 0, touches: [], load: NaN, frameWorst: 0, frameLast: 0 } : null;
 if (diag) {
   addEventListener('pointerdown', e => { diag.entry = performance.now(); diag.down = e.timeStamp || diag.entry; }, true);
+  // the screen's frames: the longest gap between two in the last second (over ~17 ms at 60 Hz: a frame was late - the
+  // page's own work, or the browser's - and a touch waits behind it)
+  const frames = t => { if (diag.frameLast) diag.frameWorst = Math.max(diag.frameWorst, t - diag.frameLast); diag.frameLast = t; requestAnimationFrame(frames); };
+  requestAnimationFrame(frames);
+  setInterval(() => { diag.frameShown = diag.frameWorst; diag.frameWorst = 0; }, 1000);
   const strip = document.createElement('div');
   strip.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:9999;padding:4px 8px;background:#000c;color:#c2f000;font:11px monospace;pointer-events:none;border:1px solid #c2f000';
   document.body.append(strip);
@@ -484,7 +489,7 @@ if (diag) {
       return;
     }
     strip.textContent = context ? `${context.sampleRate} Hz  ${$('quality').value}x  base ${ms(context.baseLatency)}  saída ${ms(context.outputLatency)}  ` +
-      `bloco iOS ${diag.burst} (${ms(diag.burst / context.sampleRate)})  toque→nota ${Number.isFinite(diag.touch) ? diag.touch.toFixed(1) + ' ms' : '—'} (app ${Number.isFinite(diag.app) ? diag.app.toFixed(1) + ' ms' : '—'})  tela ${Number.isFinite(lastSyncMs) ? lastSyncMs.toFixed(1) + ' ms' : '—'}  ${context.state}` : 'diag: ative o áudio';
+      `bloco iOS ${diag.burst} (${ms(diag.burst / context.sampleRate)})  toque→nota ${Number.isFinite(diag.touch) ? diag.touch.toFixed(1) + ' ms' : '—'} (app ${Number.isFinite(diag.app) ? diag.app.toFixed(1) + ' ms' : '—'}; 20 toques: mediana ${diag.touches.length ? [...diag.touches].sort((a, b) => a - b)[diag.touches.length >> 1].toFixed(1) : '—'}, pior ${diag.touches.length ? Math.max(...diag.touches).toFixed(1) : '—'})  áudio ${Number.isFinite(diag.load) ? Math.round(diag.load * 100) + ' %' : '—'}  quadro ${diag.frameShown ? diag.frameShown.toFixed(0) + ' ms' : '—'}  tela ${Number.isFinite(lastSyncMs) ? lastSyncMs.toFixed(1) + ' ms' : '—'}  ${context.state}` : 'diag: ative o áudio';
   }, 500);
 }
 

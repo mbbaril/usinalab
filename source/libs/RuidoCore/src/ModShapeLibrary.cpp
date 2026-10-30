@@ -64,5 +64,5 @@ juce::Array<juce::File> listShapes() {
     return files;
 }
 
-} // namespace ModShapeLibrary
-} // namespace ruidocore
+} //
+} //

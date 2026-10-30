@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Mario Baril
+// Copyright (C) 2026 Mario Brandalise Baril
 
 // Wire format owned by mobile/android/app/src/main/cpp/native_audio.cpp.
 export const NativeOp = Object.freeze({set:1, reset:2, commit:3, midi:4, route:5, step:6,

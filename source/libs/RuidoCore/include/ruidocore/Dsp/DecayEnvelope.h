@@ -1,7 +1,5 @@
 // ---------------------------------------------------------------------------
-// This file ports code from Mutable Instruments' Eurorack firmware
-// (https://github.com/pichenettes/eurorack), used under the MIT licence.
-// The upstream file it derives from is named in the comment below.
+// Ported from MIT-licensed code: the notice below. Provenance: THIRD_PARTY.md.
 //
 //   Copyright 2016 Emilie Gillet.
 //
@@ -31,28 +29,14 @@
 
 namespace ruidocore {
 
-// A trivial one-pole decay envelope - ported faithfully from Mutable
-// Instruments' Plaits (plaits/dsp/envelope.h's `DecayEnvelope`, MIT
-// licensed, github.com/pichenettes/eurorack). Distinct from
-// `LpgEnvelope` (LowPassGate.h): Plaits' own Voice class runs BOTH off
-// the same per-block decay-time formula but as two SEPARATE state
-// instances - one drives the LPG's gain/brightness (an asymmetric
-// open/close vactrol model), the other (this one) is normalled to the
-// FM/TIMBRE/MORPH CV inputs whenever nothing else is patched into them,
-// giving every Plaits voice a free built-in "hit" envelope for pitch/
-// timbre/morph modulation without needing an external LFO/envelope
-// patched in (2026-08-27, user: "o plaits possui um envelope interno
-// que pode ser usado pra criar um pitch envelope também" - this is that
-// exact mechanism, faithfully separated out as its own shared module the
-// same way LowPassGate.h already is, so any future voice can reuse it
-// for pitch/timbre/morph "punch" the same way real Plaits patches do).
+// One-pole decay envelope. Rate-scaled coefficients preserve decay time.
 class DecayEnvelope {
 public:
     void reset() { value_ = 0.0f; }
     void trigger() { value_ = 1.0f; }
     // `decay`: per-update decay coefficient (0..1) - same convention and
     // same rescaling discipline as LpgEnvelope's own process*() methods
-    // (see FmEngine.h's own comment on why a Plaits block-rate constant
+    // (see FmEngine.h's own comment on why a reference block-rate constant
     // needs dividing by kBlockSize before use in a per-sample update).
     void process(float decay) { value_ *= (1.0f - decay); }
     float value() const { return value_; }
@@ -61,4 +45,4 @@ private:
     float value_ = 0.0f;
 };
 
-} // namespace ruidocore
+} //

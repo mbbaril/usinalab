@@ -19,12 +19,7 @@ enum class ScaleType {
     Blues,
     Dorian,
     Mixolydian,
-    // Appended, not inserted - existing entries above must keep their
-    // numeric values (persisted raw as an int in the save format). User:
-    // "pode criar mais escalas ainda" -> "incluindo exoticas" -> "pode
-    // criar um numero bem compreensivo" - a real, musically-verified
-    // set (modes, jazz, symmetric, and world/"exotic" scales), not an
-    // arbitrary long list.
+    // Append scale entries; persisted numeric indices must remain stable.
     Phrygian,
     Lydian,
     Locrian,
@@ -82,13 +77,11 @@ int quantizeSemitone(const Scale& scale, int semitoneFromRoot);
 // "nudge by one wheel-click" gesture: e.g. a 2-semitone scale gap makes
 // note+1 land equidistant between the current degree and the next one, so
 // nearest-neighbor rounding can snap right back to the SAME note every
-// time - the wheel appears stuck (found 2026-09-02, "usando o mouse, mas
-// funciona se eu der enter note" - typed entry bypasses the incremental
-// step entirely so it never hit this). `noteFromRoot` need not already be
+// time - the wheel appears stuck . `noteFromRoot` need not already be
 // exactly on-scale (it's re-quantized first internally).
 int stepScaleDegree(const Scale& scale, int noteFromRoot, int direction);
 
 const char* toString(ScaleType type);
 const char* noteName(int pitchClass); // 0-11 -> "C".."B"
 
-} // namespace ruidocore
+} //

@@ -19,13 +19,10 @@ namespace ruidocore {
 // folder sees the same shapes immediately - no sync mechanism needed
 // beyond "write to the same place."
 //
-// This is the one core module that depends on JUCE (juce::File for
-// filesystem access) - everything else in this library is
-// framework-agnostic.
+// Optional filesystem-backed shape storage; the portable DSP has no framework dependency.
 namespace ModShapeLibrary {
 
-// A per-user shared shapes folder (juce::File::getSpecialLocation on
-// every platform this targets).
+// Shared shapes directory in per-user application data.
 juce::File shapesFolder();
 
 // One .rshape file per saved curve - `name` becomes both the filename
@@ -39,6 +36,6 @@ std::vector<ModBreakpoint> load(const juce::File& file);
 // Every .rshape file currently in shapesFolder(), sorted by name.
 juce::Array<juce::File> listShapes();
 
-} // namespace ModShapeLibrary
+} //
 
-} // namespace ruidocore
+} //

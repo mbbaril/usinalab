@@ -1,22 +1,52 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* CABINE REMOTA (docs/CABINE_REMOTA.md): the switch, the port, the seven surfaces and the 9 x 9 board */
-.remote-switch{display:flex;gap:6px;align-items:center;margin:2px 0 8px;font:10px var(--mono);color:#999}
-.cabine-remote{display:flex;flex-direction:column;gap:6px;height:100%;min-height:0;overflow:hidden!important}
-.remote-head{display:flex;gap:6px;align-items:center;flex:none}.remote-head select{flex:1;min-width:90px;min-height:36px;background:#111;color:var(--text);border:1px solid var(--line)}
-.remote-link{font:10px var(--mono);color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:35%}
-.remote-surfaces{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;flex:none}.remote-surfaces .play-toggle{min-width:0;padding:4px 2px;font-size:10px}
-.remote-board{flex:1;min-height:0;display:grid;grid-template-columns:repeat(8,minmax(0,1fr)) minmax(0,.8fr);grid-template-rows:minmax(0,.6fr) repeat(8,minmax(0,1fr));gap:4px;
-  aspect-ratio:9/8.6;max-height:100%;max-width:100%;margin:0 auto;touch-action:none;user-select:none;-webkit-user-select:none}
-.remote-pad,.remote-button{background:#000;border:1px solid #2a2a28;border-radius:4px;touch-action:none;min-width:0;min-height:0}
-.remote-button{border-radius:50%}.remote-button.top{border-radius:4px}
-.remote-pad:active,.remote-button:active{outline:2px solid #fff;outline-offset:-2px}
-/* a short screen (the phone lying down): the switch, the port and the surfaces in a column, the board the whole height */
-@media (max-height:520px){
-  .cabine-remote{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:6px}
-  .cabine-remote>.remote-switch,.cabine-remote>.remote-head,.cabine-remote>.remote-surfaces{grid-column:1;margin:0}
-  .cabine-remote>.remote-head{flex-wrap:wrap}.cabine-remote>.remote-head select{flex-basis:100%;order:-1;min-height:30px}
-  .cabine-remote>.remote-surfaces{grid-template-columns:1fr 1fr;align-content:start}
-  .cabine-remote>.remote-board{grid-column:2;grid-row:1/-1;height:100%}
-  .remote-link{max-width:100%}
-}
+.remote-switch{display:flex;gap:4px;align-items:center;margin:0 0 8px;font:9px var(--mono);color:#92978b;min-width:0;flex-wrap:wrap}
+.remote-switch .play-toggle{flex:1;padding:5px 6px;white-space:nowrap;font-size:10px}.remote-switch>span{width:100%;letter-spacing:.06em}
+.cabine-remote{display:grid!important;grid-template-columns:minmax(170px,220px) minmax(0,1fr);gap:14px;height:100%;min-height:0;min-width:0;overflow:hidden!important;padding:6px!important;box-sizing:border-box}
+.remote-console{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;overflow-y:auto;padding:8px;background:#0d100b;border:1px solid #2c3224;border-radius:5px}
+.remote-console .remote-switch{margin:0}.remote-head{min-width:0}.remote-head .play-connection{min-width:0;align-items:center}.remote-head .play-connection:before{background:#777}.remote-connected .remote-head .play-connection:before{background:#25e0c4}
+.remote-link{font:10px var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.remote-port-panel{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.remote-port-panel select{grid-column:1/-1;min-width:0;width:100%;min-height:36px;background:#191c16;color:var(--text);border:1px solid var(--line);font:11px var(--mono)}.remote-port-panel button.small-button{min-width:0;white-space:normal;font:10px var(--mono);padding:6px 3px!important}
+.remote-surfaces{display:grid;grid-template-columns:1fr 1fr;gap:6px}.remote-surfaces .play-toggle{min-width:0;min-height:40px;padding:5px 3px;font-size:10px}.remote-surfaces .play-toggle[aria-pressed=true]{color:var(--accent);background:#202710;border-color:#839d20}
+.remote-guide{font:10px/1.6 var(--mono);color:#92978b;margin:0;margin-top:auto}
+.remote-stage{display:grid;place-items:center;position:relative;min-width:0;min-height:0;container-type:size;background:#080b06;border:1px solid #252c1e;border-radius:5px;overflow:hidden}
+.remote-board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr)) minmax(0,.8fr);grid-template-rows:minmax(0,.6fr) repeat(8,minmax(0,1fr));gap:4px;aspect-ratio:9/8.6;width:min(100%,640px);max-height:100%;margin:0;touch-action:none;user-select:none;-webkit-user-select:none}
+@supports(height:1cqh){.remote-board{width:min(calc(100cqw - 16px),calc((100cqh - 16px)*9/8.6),700px);max-height:none}}
+.remote-pad,.remote-button{background:#0c1008;border:1px solid #39432b;border-radius:5px;touch-action:none;min-width:0;min-height:0;box-sizing:border-box}.remote-button{border-radius:8px}.remote-button.top{border-radius:4px}.remote-pad:active,.remote-button:active{outline:2px solid #fff;outline-offset:-3px}
+.remote-empty{position:absolute;max-width:290px;margin:12px;padding:20px;text-align:center;background:#0f1409f5;border:1px solid #4e5d31;border-radius:6px;box-shadow:0 8px 30px #0008;font:12px var(--mono);color:var(--text)}.remote-empty[hidden]{display:none}.remote-empty strong{font-size:14px;color:var(--accent)}.remote-empty p{font:11px/1.6 var(--mono);color:#b6bfa8;margin:12px 0}.remote-empty button{width:100%}
 .remote-allow{display:flex;gap:8px;align-items:center;margin:10px 0;font:11px var(--mono);color:#ccc}
+/* Local and remote navigation use the same emphasis; the physical grid remains unchanged. */
+.cabine-surfaces>button[aria-pressed=true]{background:#202710;color:var(--accent);border-color:#839d20}
+@media(max-height:520px){.cabine-remote{grid-template-columns:170px minmax(0,1fr);gap:8px;padding:3px!important}.remote-console{gap:8px;padding:6px}.remote-console .remote-switch{gap:3px}.remote-console .remote-switch>span{display:none}.remote-console .play-toggle{min-height:32px;font-size:9px}.remote-console .play-connection{min-height:32px;padding:4px 6px}.remote-guide{display:none}.remote-surfaces{gap:4px}.remote-port-panel select{min-height:32px}.remote-empty{padding:12px;max-width:250px}.remote-board{gap:2px}@supports(height:1cqh){.remote-board{width:min(calc(100cqw - 8px),calc((100cqh - 8px)*9/8.6),700px)}}}
+@media(max-width:599px) and (min-height:521px){.cabine-remote{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:8px}.remote-console{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:visible}.remote-console .remote-switch{grid-column:1}.remote-console>.play-group-label,.remote-guide{display:none}.remote-surfaces{grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr))}.remote-head{align-self:start}.remote-port-panel{grid-template-columns:1fr}.remote-port-panel select{grid-column:auto}.remote-surfaces .play-toggle{min-height:36px}}
+/* Local CABINE: a stable control rail and the full performance surface. */
+.instrument-app #view:has(>.cabine-local-console){display:grid;grid-template-columns:minmax(170px,220px) minmax(0,1fr);grid-template-rows:24px minmax(0,1fr);gap:6px 14px;padding:6px;overflow:hidden;min-height:0}
+.cabine-local-console{grid-column:1;grid-row:1/-1;display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;overflow-y:auto;padding:8px;border:1px solid #2c3224;border-radius:5px;background:#0d100b}
+.cabine-local-console .cabine-toolbar{margin:0}.cabine-local-console .cabine-surfaces{grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}.cabine-local-console .cabine-surfaces>button{min-height:40px;font-size:10px;background:#10110e;border-color:#34382e}.cabine-local-console .cabine-surfaces>button[aria-pressed=true]{background:#202710;color:var(--accent);border-color:#839d20}
+.cabine-local-console .cabine-tools{display:flex;flex-wrap:wrap!important;gap:6px!important;overflow:visible}.instrument-app .cabine-local-console .cabine-tools>button,.instrument-app .cabine-local-console .cabine-tools>select{min-height:36px;padding:5px 7px;font:10px var(--mono);min-width:0}.cabine-local-console .cabine-expand{margin-left:0}
+.cabine-local-console .perform-note{font:10px/1.6 var(--mono);color:#92978b;margin:0;margin-top:auto}.cabine-local-console .cabine-sequence-controls{flex-wrap:wrap;overflow:visible;flex:none}.cabine-local-console .cabine-sequence-controls button{min-height:32px;padding:4px;font-size:9px}.cabine-local-console .cabine-sequence-controls span{white-space:normal}
+#view:has(>.cabine-local-console)>.cabine-headers,#view:has(>.cabine-local-console)>.matrix-header-viewport{grid-column:2;grid-row:1;margin:0;min-width:0;max-width:none;align-self:center}
+#view:has(>.cabine-local-console) .matrix-header-viewport .cabine-headers{margin:0;font-size:9px;max-width:none;text-align:center}
+#view:has(>.cabine-local-console)>.cabine-grid,#view:has(>.cabine-local-console)>.matrix-viewport{grid-column:2;grid-row:2;min-width:0;min-height:0;height:100%;max-width:none;width:100%;box-sizing:border-box}
+#view:has(>.cabine-local-console) .cabine-grid{grid-template-rows:repeat(8,minmax(0,1fr));gap:4px;max-width:none;width:100%}
+#view:has(>.cabine-local-console) .cabine-pad{aspect-ratio:auto;min-height:0;height:100%;font-size:10px;padding:4px;border-color:color-mix(in srgb,var(--pad-color) 40%,#1b2115);background:#0c1008;overflow:hidden}
+#view:has(>.cabine-local-console) .cabine-pad.active{border-color:var(--pad-color);background:color-mix(in srgb,var(--pad-color) calc(var(--strength,1)*65%),#080808)}
+#view:has(>.cabine-local-console) .cabine-pad[data-source]{padding-top:14px}#view:has(>.cabine-local-console) .cabine-pad[data-source]:before{top:3px;left:5px;font:8px var(--mono);max-width:calc(100% - 10px);overflow:hidden;text-overflow:ellipsis}
+@media(max-height:520px){.instrument-app #view:has(>.cabine-local-console){grid-template-columns:170px minmax(0,1fr);gap:4px 8px;padding:3px;grid-template-rows:20px minmax(0,1fr)}.cabine-local-console{gap:6px;padding:6px}.cabine-local-console .remote-switch>span{display:none}.cabine-local-console .remote-switch{gap:3px;margin-bottom:0}.cabine-local-console .remote-switch .play-toggle{min-height:32px;font-size:9px}.cabine-local-console .cabine-surfaces{gap:4px;margin-bottom:6px}.cabine-local-console .cabine-surfaces>button{min-height:32px;font-size:9px}.cabine-local-console .perform-note{font-size:9px;line-height:1.4}.instrument-app .cabine-local-console .cabine-tools>button{min-height:30px;font-size:9px}.cabine-local-console .cabine-tools{gap:4px!important}#view:has(>.cabine-local-console) .cabine-grid{gap:3px}#view:has(>.cabine-local-console) .cabine-pad{font-size:9px;padding:2px}#view:has(>.cabine-local-console) .cabine-pad[data-source]{padding-top:12px}#view:has(>.cabine-local-console) .cabine-pad[data-source]:before{font-size:7px;top:2px}}
+@media(max-width:599px) and (min-height:521px){.instrument-app #view:has(>.cabine-local-console){grid-template-columns:minmax(0,1fr);grid-template-rows:auto 24px minmax(0,1fr);gap:6px}.cabine-local-console{grid-column:1;grid-row:1;max-height:260px;gap:6px}.cabine-local-console .cabine-surfaces{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:6px}.cabine-local-console .cabine-surfaces>button{min-height:36px}.cabine-local-console .remote-switch{max-width:300px}.cabine-local-console .perform-note{display:none}#view:has(>.cabine-local-console)>.cabine-headers,#view:has(>.cabine-local-console)>.matrix-header-viewport{grid-column:1;grid-row:2}#view:has(>.cabine-local-console)>.cabine-grid,#view:has(>.cabine-local-console)>.matrix-viewport{grid-column:1;grid-row:3}#view:has(>.cabine-local-console) .cabine-pad{font-size:8px}#view:has(>.cabine-local-console) .cabine-pad[data-source]:before{font-size:6px;left:2px}}
+/* Destination names must fit the narrow rail without creating horizontal scrolling. */
+.remote-console,.cabine-local-console{overflow-x:hidden}
+.remote-switch .play-toggle{min-width:0;white-space:normal;line-height:1.25;overflow-wrap:normal}
+.play-output,.play-settings{isolation:isolate}
+@media(max-height:520px){.remote-switch .play-toggle{padding:3px;font-size:9px}}
+@media(max-width:599px) and (min-height:521px){
+  .instrument-app .instrument-toolbar{height:80px;flex-wrap:wrap;gap:0;flex:none}
+  .instrument-app .instrument-toolbar>.instrument-mark{display:none}
+  .instrument-app .instrument-toolbar>.tabs{order:0;flex:1 0 100%;height:40px;gap:0;justify-content:space-between}
+  .instrument-app .instrument-toolbar>.tabs button{flex:1;min-width:0;padding:5px;font-size:10px}
+  .instrument-app .instrument-access{order:1;width:100%;height:40px;justify-content:flex-end;gap:4px}
+  .play-macro label{white-space:normal;font-size:8px;text-align:center;min-height:20px}
+}
+@media(max-width:599px) and (min-height:521px){
+ .instrument-app .console{grid-template-rows:80px minmax(0,1fr) 108px}
+ .instrument-app.no-keybed .console{grid-template-rows:80px minmax(0,1fr)}
+}
