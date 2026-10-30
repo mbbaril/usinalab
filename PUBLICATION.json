@@ -26,7 +26,7 @@
     "cabine-user.js": "49dc93d13ac6ffd03f5728a9fe6664355632e5a97ab4156279b0b7a0308feadc",
     "cabine.js": "92d74c1e9155df754732bb00bacb888fac1848310413458e8afd93f3830ed451",
     "Capacitor-LICENSE.txt": "9c6ebf3e5ab832ba4d5af38f340978e1fedbfee6e3d23662dfdb8917a9d864dd",
-    "CNAME": "4e23aee9af87ccd982cb4b656b6a7dbaf79d3cab200f56995d0adf593e2e92ea",
+    "CNAME": "2acd53907c44822177b1cc3c6978797ed72363343dab09b33072eb809242b032",
     "controller-panel.js": "e8d39df87efcddb40c59a76982099f891e77ae5b1f50100a0bee42437d44ec32",
     "controls.js": "4483cf017f8a1c4729e884e2b309c02e34e52618a1253c841503df00ad8fd697",
     "credits.js": "fc6dda94f38025cb5a1f3dfeadf216d1c13c459717a3f4a3f4ea22bffd4a6625",
@@ -169,5 +169,6 @@
   "reviewNotes": [
     "Legacy LAUNCHPAD XML import keys retained; third-party attribution preserved. Claude to review rule 34 exceptions.",
     "No push. site/ and source/ retained for alpha.7."
-  ]
+  ],
+  "domain": "lab.usina.ruido.art.br"
 }
